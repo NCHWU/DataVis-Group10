@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MovieMaker Analytics</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="src/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  </head>
+  <body>
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Netflix • IMDB • Kaggle</p>
+        <h1>MovieMaker Analytics Dashboard</h1>
+        <p class="lede">
+          Explore global and regional movie trends across viewership, budgets, and ratings. Start with the
+          overview, scrub through time, then dive into scatter and radar comparisons.
+        </p>
+        <div class="controls">
+          <label>
+            Region / Country
+            <select id="region-filter"></select>
+          </label>
+          <label>
+            Genre
+            <select id="genre-filter"></select>
+          </label>
+          <label class="range">
+            Year from
+            <select id="year-min"></select>
+          </label>
+          <label class="range">
+            to
+            <select id="year-max"></select>
+          </label>
+          <button id="reset-filters" class="ghost">Reset</button>
+        </div>
+      </div>
+      <div class="badge">Live Prototype</div>
+    </header>
+
+    <main class="stack">
+      <section class="card wide">
+        <h2>Global Overview</h2>
+        <p class="subhead">Snapshot by region and genre (map placeholder)</p>
+        <div id="summary-grid" class="summary-grid"></div>
+        <div class="placeholder">World map / region glyphs go here</div>
+        <div class="search-block">
+          <div class="search-header">
+            <div>
+              <h3>Specific movie title info</h3>
+              <p class="subhead">Search and pick a title to see stats.</p>
+            </div>
+            <input id="search-title" type="search" placeholder="Start typing a title..." />
+          </div>
+          <ul id="search-suggestions"></ul>
+          <div id="search-result" class="search-result placeholder">Select a title to see details.</div>
+        </div>
+      </section>
+
+      <section class="card wide">
+        <h2>Timeline View</h2>
+        <p class="subhead">Average budget + rating over time</p>
+        <div id="timeline"></div>
+      </section>
+
+      <section class="card wide">
+        <h2>Deep Dive</h2>
+        <p class="subhead">Budget vs. rating scatter; brush to compare selections</p>
+        <div id="scatter"></div>
+        <div class="placeholder">Radar comparison placeholder</div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>Data prep: Kaggle movies + Netflix engagement + IMDB (non-commercial).</p>
+      <p>Hosting: Static GitHub Pages (D3 via CDN, no build step).</p>
+    </footer>
+
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
