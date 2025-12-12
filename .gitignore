@@ -9,7 +9,6 @@ __pycache__/
 .python-version
 
 # Data outputs
-data/raw/
 public/data/processed.json
 public/data/processed.csv
 
