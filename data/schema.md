@@ -1,8 +1,8 @@
 Data Sources
 ------------
-- Netflix Engagement Report (Kaggle, `netflix-engagement-report`) → viewership (hours viewed, duration), title, country.
-- Movies Budget/Revenue (Kaggle `movies-dataset`) → `id`, `title`, `budget`, `revenue`.
-- IMDB Non-Commercial Datasets → `title.basics.tsv` (title, year, runtime, genres, region/language codes), `title.ratings.tsv` (averageRating, numVotes), `title.principals.tsv` (cast/crew), `name.basics.tsv` (actor ratings via `averageRating`/`numVotes` if available in supplemental data).
+- Netflix Engagement Report (Kaggle, `netflix-engagement-report`(https://www.kaggle.com/datasets/konradb/netflix-engagement-report)) → viewership (hours viewed, duration), title, country.
+- Movies Budget/Revenue (Kaggle `movies-dataset`(https://www.kaggle.com/datasets/utkarshx27/movies-dataset) ) → `id`, `title`, `budget`, `revenue`.
+- IMDB Non-Commercial Datasets (https://developer.imdb.com/non-commercial-datasets/) → `title.basics.tsv` (title, year, runtime, genres, region/language codes), `title.ratings.tsv` (averageRating, numVotes), `title.principals.tsv` (cast/crew), `name.basics.tsv` (actor ratings via `averageRating`/`numVotes` if available in supplemental data).
 
 Expected Raw File Locations
 ---------------------------
