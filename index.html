@@ -47,8 +47,8 @@
 
     <main class="stack">
       <section class="card wide">
-        <h2>Global Overview</h2>
-        <p class="subhead">Snapshot by region and genre (map placeholder)</p>
+        <h2 id="global-title">Global Overview</h2>
+        <p id="global-subhead" class="subhead">Snapshot by region and genre (map placeholder)</p>
         <div id="summary-grid" class="summary-grid"></div>
         <div class="placeholder">World map / region glyphs go here</div>
         <div class="search-block">
@@ -61,11 +61,33 @@
           </div>
           <ul id="search-suggestions"></ul>
           <div id="search-result" class="search-result placeholder">Select a title to see details.</div>
+          <div class="compare-actions">
+            <button id="compare-add" class="ghost" type="button">Add to compare (max 4)</button>
+            <button id="compare-clear" class="ghost" type="button">Clear compare</button>
+          </div>
+          <div id="compare-panel" class="compare-panel">
+            <div class="compare-header">
+              <h4>Side-by-side compare (up to 4)</h4>
+              <p class="subhead">Add from the search box above.</p>
+            </div>
+            <div id="compare-grid" class="compare-grid">
+              <p class="muted">No movies selected. Pick a title and click “Add to compare”.</p>
+            </div>
+          </div>
+          <div id="top-rated-panel" class="compare-panel">
+            <div class="compare-header">
+              <h4>Top 5 by rating</h4>
+              <p class="subhead">Filtered by current Region/Genre/Years</p>
+            </div>
+            <div id="top-rated-list" class="compare-grid">
+              <p class="muted">Loading top titles…</p>
+            </div>
+          </div>
         </div>
       </section>
 
       <section class="card wide">
-        <h2>Timeline View</h2>
+        <h2 id="timeline-title">Timeline View</h2>
         <p class="subhead">Average budget + rating over time</p>
         <div id="timeline"></div>
       </section>

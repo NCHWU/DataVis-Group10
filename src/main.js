@@ -2,6 +2,8 @@ const state = {
   data: [],
   filtered: [],
   years: { min: 1900, max: 2030 },
+  compare: [],
+  selected: null,
 };
 
 const regionFilter = document.querySelector("#region-filter");
@@ -12,6 +14,8 @@ const resetBtn = document.querySelector("#reset-filters");
 const searchInput = document.querySelector("#search-title");
 const searchResult = document.querySelector("#search-result");
 const searchSuggestions = document.querySelector("#search-suggestions");
+const compareAddBtn = document.querySelector("#compare-add");
+const compareClearBtn = document.querySelector("#compare-clear");
 
 async function loadData() {
   const candidates = [
@@ -93,7 +97,9 @@ function render() {
   renderSummary(state.filtered);
   renderTimeline(state.filtered);
   renderScatter(state.filtered);
-  renderSearchResult(searchInput.value);
+  renderSearchResult(searchInput.value, state.filtered);
+  renderCompare();
+  renderTopRated();
 }
 
 function setYearOptions(selectEl, minYear, maxYear, selectedValue) {
@@ -112,7 +118,40 @@ function setYearOptions(selectEl, minYear, maxYear, selectedValue) {
   selectEl.value = selectedValue;
 }
 
+function currentRegionLabel() {
+  return regionFilter.value || "All regions";
+}
+
+function currentGenreLabel() {
+  return genreFilter.value || "All genres";
+}
+
+function currentYearRangeLabel() {
+  const minYear = Number(yearMinInput.value) || state.years.min;
+  const maxYear = Number(yearMaxInput.value) || state.years.max;
+  return `${minYear}–${maxYear}`;
+}
+
+function renderTitles() {
+  const region = currentRegionLabel();
+  const genre = currentGenreLabel();
+  const years = currentYearRangeLabel();
+  const overviewTitle = document.querySelector("#global-title");
+  if (overviewTitle) {
+    overviewTitle.textContent = `Global Overview — ${region} | ${genre} | ${years}`;
+  }
+  const overviewSubhead = document.querySelector("#global-subhead");
+  if (overviewSubhead) {
+    overviewSubhead.textContent = `Snapshot for ${genre.toLowerCase()} titles in ${region} (${years})`;
+  }
+  const timelineTitle = document.querySelector("#timeline-title");
+  if (timelineTitle) {
+    timelineTitle.textContent = `Timeline — ${genre} in ${region} (${years})`;
+  }
+}
+
 function renderSummary(data) {
+  renderTitles();
   const container = document.querySelector("#summary-grid");
   container.innerHTML = "";
   if (!data.length) {
@@ -248,6 +287,53 @@ function renderTimeline(data) {
       `<div class="legend"><span class="swatch" style="background:#4ee1a0"></span>Budget` +
         `<span class="swatch" style="background:#3cb4ff"></span>Rating</div>`
     );
+
+  // Interactive hover
+  const tooltip = container
+    .append("div")
+    .attr("class", "timeline-tooltip")
+    .style("opacity", 0);
+
+  const focus = svg.append("g").style("display", "none");
+  focus.append("line").attr("class", "hover-line").attr("stroke", "#fff").attr("stroke-opacity", 0.25).attr("y1", margin.top).attr("y2", margin.top + innerHeight);
+  const focusBudget = focus.append("circle").attr("r", 6).attr("fill", "#4ee1a0").attr("stroke", "#0c0f1a").attr("stroke-width", 2);
+  const focusRating = focus.append("circle").attr("r", 6).attr("fill", "#3cb4ff").attr("stroke", "#0c0f1a").attr("stroke-width", 2);
+
+  const bisect = d3.bisector((d) => d[0]).center;
+  svg
+    .append("rect")
+    .attr("fill", "transparent")
+    .attr("pointer-events", "all")
+    .attr("x", margin.left)
+    .attr("y", margin.top)
+    .attr("width", innerWidth)
+    .attr("height", innerHeight)
+    .on("mousemove", (event) => {
+      const [mx] = d3.pointer(event, svg.node());
+      const year = Math.round(x.invert(mx));
+      const idx = bisect(agg, year);
+      const d = agg[Math.max(0, Math.min(idx, agg.length - 1))];
+      if (!d) return;
+      const yearVal = d[0];
+      const vals = d[1];
+      focus.style("display", null);
+      focus.select(".hover-line").attr("x1", x(yearVal)).attr("x2", x(yearVal));
+      focusBudget.attr("cx", x(yearVal)).attr("cy", yBudget(vals.avgBudget || 0));
+      focusRating.attr("cx", x(yearVal)).attr("cy", yRating(vals.avgRating || 0));
+      tooltip
+        .style("opacity", 1)
+        .style("left", `${x(yearVal)}px`)
+        .style("top", `${margin.top + 10}px`)
+        .html(
+          `<strong>${yearVal}</strong><br/>` +
+            `Budget: $${(vals.avgBudget / 1_000_000 || 0).toFixed(1)}M<br/>` +
+            `Rating: ${vals.avgRating ? vals.avgRating.toFixed(2) : "—"}`
+        );
+    })
+    .on("mouseleave", () => {
+      focus.style("display", "none");
+      tooltip.style("opacity", 0);
+    });
 }
 
 function renderScatter(data) {
@@ -259,6 +345,24 @@ function renderScatter(data) {
   }
 
   const filtered = data.filter((d) => d.budget > 0 && d.rating);
+  const regions = Array.from(new Set(filtered.map((d) => d.region || "Unknown")));
+  const color = d3.scaleOrdinal().domain(regions).range(d3.schemeTableau10);
+
+  // Downsample if very dense to keep plot readable.
+  const maxPoints = 800;
+  const step = Math.max(1, Math.ceil(filtered.length / maxPoints));
+  const plotted = filtered.filter((_, i) => i % step === 0);
+
+  // Legend
+  container
+    .append("div")
+    .attr("class", "legend scatter-legend")
+    .html(
+      regions
+        .map((r) => `<span class="swatch" style="background:${color(r)}"></span>${r}`)
+        .join("")
+    );
+
   const width = container.node().clientWidth || 600;
   const height = container.node().clientHeight || 320;
   const margin = { top: 20, right: 20, bottom: 40, left: 55 };
@@ -267,10 +371,9 @@ function renderScatter(data) {
 
   const x = d3
     .scaleLinear()
-    .domain([0, d3.max(filtered, (d) => d.budget) * 1.1 || 1])
+    .domain([0, d3.max(plotted, (d) => d.budget) * 1.1 || 1])
     .range([margin.left, width - margin.right]);
   const y = d3.scaleLinear().domain([0, 10]).range([height - margin.bottom, margin.top]);
-  const color = d3.scaleOrdinal().domain(Array.from(new Set(filtered.map((d) => d.region)))).range(d3.schemeTableau10);
 
   svg
     .append("g")
@@ -298,13 +401,13 @@ function renderScatter(data) {
   svg
     .append("g")
     .selectAll("circle")
-    .data(filtered)
+    .data(plotted)
     .join("circle")
     .attr("cx", (d) => x(d.budget))
     .attr("cy", (d) => y(d.rating))
-    .attr("r", 6)
+    .attr("r", 5)
     .attr("fill", (d) => color(d.region))
-    .attr("fill-opacity", 0.8)
+    .attr("fill-opacity", 0.7)
     .on("mouseenter", (event, d) => {
       tooltip
         .style("opacity", 1)
@@ -323,15 +426,17 @@ function renderScatter(data) {
     .text(`Budget vs. rating — ${genreFilter.value || "All genres"}`);
 }
 
-function renderSearchResult(query) {
+function renderSearchResult(query, data = state.filtered) {
+  const source = data && data.length ? data : state.data;
   if (!searchResult) return;
   const q = (query || "").trim().toLowerCase();
   if (!q) {
     searchResult.innerHTML = "Select a title to see details.";
     if (searchSuggestions) searchSuggestions.innerHTML = "";
+    state.selected = null;
     return;
   }
-  const matches = state.data.filter((d) => (d.title || "").toLowerCase().includes(q)).slice(0, 6);
+  const matches = source.filter((d) => (d.title || "").toLowerCase().includes(q)).slice(0, 6);
   if (searchSuggestions) {
     searchSuggestions.innerHTML = matches
       .map((m) => `<li data-id="${m.id}">${m.title} (${m.release_year || "—"})</li>`)
@@ -339,7 +444,7 @@ function renderSearchResult(query) {
     searchSuggestions.querySelectorAll("li").forEach((li) => {
       li.addEventListener("click", () => {
         const id = li.getAttribute("data-id");
-        const picked = state.data.find((d) => String(d.id) === String(id));
+        const picked = source.find((d) => String(d.id) === String(id));
         if (picked) showSearchDetails(picked);
       });
     });
@@ -347,14 +452,18 @@ function renderSearchResult(query) {
   if (matches.length === 1) {
     showSearchDetails(matches[0]);
   } else if (matches.length > 1) {
-    searchResult.innerHTML = `Multiple results for "${query}". Pick one above.`;
+    state.selected = matches[0];
+    searchResult.innerHTML = `Multiple results for "${query}". Showing first match; pick a specific one above.`;
+    showSearchDetails(matches[0]);
   } else {
     searchResult.innerHTML = `No match for "${query}".`;
+    state.selected = null;
   }
 }
 
 function showSearchDetails(match) {
   if (!searchResult) return;
+  state.selected = match;
   searchResult.innerHTML = `
     <h3>${match.title}</h3>
     <p><strong>Year:</strong> ${match.release_year || "—"} | <strong>Region:</strong> ${regionLabel(match)}</p>
@@ -367,9 +476,80 @@ function showSearchDetails(match) {
   `;
 }
 
+function renderCompare() {
+  const container = document.querySelector("#compare-grid");
+  if (!container) return;
+  container.innerHTML = "";
+  if (!state.compare.length) {
+    container.innerHTML = `<p class="muted">No movies selected. Pick a title and click “Add to compare”.</p>`;
+    return;
+  }
+  const cards = state.compare
+    .map((id) => state.data.find((d) => String(d.id) === String(id)))
+    .filter(Boolean)
+    .slice(0, 4);
+  if (!cards.length) {
+    container.innerHTML = `<p class="muted">Selections are unavailable with current data.</p>`;
+    return;
+  }
+  cards.forEach((movie) => {
+    const el = document.createElement("div");
+    el.className = "compare-card";
+    el.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+        <h5>${movie.title}</h5>
+        <span class="pill">${movie.release_year || "—"}</span>
+      </div>
+      <p><strong>Rating:</strong> ${movie.rating ?? "—"}</p>
+      <p><strong>Budget:</strong> ${movie.budget ? `$${(movie.budget / 1_000_000).toFixed(1)}M` : "—"}</p>
+      <p><strong>Revenue:</strong> ${movie.revenue ? `$${(movie.revenue / 1_000_000).toFixed(1)}M` : "—"}</p>
+      <p><strong>Region:</strong> ${regionLabel(movie)}</p>
+      <p><strong>Genres:</strong> ${(movie.genres || []).join(", ") || "—"}</p>
+      <p style="margin-top:0.4rem;"><button data-id="${movie.id}" class="ghost remove-btn" style="padding:0.35rem 0.6rem;">Remove</button></p>
+    `;
+    container.appendChild(el);
+  });
+  container.querySelectorAll(".remove-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-id");
+      state.compare = state.compare.filter((c) => String(c) !== String(id));
+      renderCompare();
+    });
+  });
+}
+
+function renderTopRated() {
+  const container = document.querySelector("#top-rated-list");
+  if (!container) return;
+  const source = state.filtered.length ? state.filtered : state.data;
+  const best = source
+    .filter((d) => Number.isFinite(d.rating))
+    .sort((a, b) => b.rating - a.rating)
+    .slice(0, 5);
+  if (!best.length) {
+    container.innerHTML = `<p class="muted">No rated titles for current filters.</p>`;
+    return;
+  }
+  container.innerHTML = "";
+  best.forEach((m, idx) => {
+    const el = document.createElement("div");
+    el.className = "compare-card";
+    el.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+        <h5>${idx + 1}. ${m.title}</h5>
+        <span class="pill">${m.release_year || "—"}</span>
+      </div>
+      <p><strong>Rating:</strong> ${m.rating ?? "—"} | <strong>Votes:</strong> ${m.numVotes ?? "—"}</p>
+      <p><strong>Region:</strong> ${regionLabel(m)} | <strong>Genre:</strong> ${(m.genres || []).slice(0, 2).join(", ") || "—"}</p>
+    `;
+    container.appendChild(el);
+  });
+}
+
 async function init() {
   try {
     state.data = await loadData();
+    console.log("[init] data loaded", state.data.length);
     populateFilters(state.data);
     applyFilters();
     window.addEventListener("resize", () => render());
@@ -378,6 +558,45 @@ async function init() {
     yearMinInput.addEventListener("change", applyFilters);
     yearMaxInput.addEventListener("change", applyFilters);
     searchInput.addEventListener("input", (e) => renderSearchResult(e.target.value));
+    console.log("[init] buttons present", {
+      compareAdd: !!compareAddBtn,
+      compareClear: !!compareClearBtn,
+    });
+    if (compareAddBtn) {
+      compareAddBtn.addEventListener("click", () => {
+        console.log("[compare] add clicked", state.selected?.title);
+        if (!state.selected) {
+          const q = (searchInput.value || "").toLowerCase().trim();
+          const fallback = state.filtered.find((d) => (d.title || "").toLowerCase().includes(q));
+          if (fallback) {
+            state.selected = fallback;
+            showSearchDetails(fallback);
+          } else {
+            searchResult.innerHTML = `<p class="muted">Type to search, then click a suggestion (or we’ll use the first match) before adding.</p>`;
+            return;
+          }
+        }
+        const id = state.selected.id;
+        if (state.compare.includes(id)) {
+          render();
+          return;
+        }
+        if (state.compare.length >= 4) {
+          searchResult.innerHTML = `<p class="muted">You already have 4 movies in compare. Remove one first.</p>`;
+          return;
+        }
+        state.compare.push(id);
+        searchResult.innerHTML = `<p class="muted">Added "${state.selected.title}" to compare below.</p>`;
+        render();
+      });
+    }
+    if (compareClearBtn) {
+      compareClearBtn.addEventListener("click", () => {
+        console.log("[compare] clear clicked");
+        state.compare = [];
+        render();
+      });
+    }
     resetBtn.addEventListener("click", () => {
       regionFilter.value = "";
       genreFilter.value = "";

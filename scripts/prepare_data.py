@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import numpy as np
+from ast import literal_eval
 from pathlib import Path
 from typing import Iterable, List, Optional
 
@@ -54,6 +55,20 @@ def load_movies() -> pd.DataFrame:
     if "release_year" not in df.columns and "release_date" in df.columns:
         df["release_year"] = pd.to_datetime(df["release_date"], errors="coerce").dt.year
     df["release_year"] = df["release_year"].astype("Int64")
+    df["country_code"] = df.get("production_countries", pd.Series(dtype=object)).apply(
+        lambda raw: _first_from_list(raw, "iso_3166_1")
+    )
+    df["country"] = df.get("production_countries", pd.Series(dtype=object)).apply(
+        lambda raw: _first_from_list(raw, "name")
+    )
+    df["country"] = df["country"].fillna(df["country_code"])
+    df["language_code"] = df.get("spoken_languages", pd.Series(dtype=object)).apply(
+        lambda raw: _first_from_list(raw, "iso_639_1")
+    )
+    df["language"] = df.get("spoken_languages", pd.Series(dtype=object)).apply(
+        lambda raw: _first_from_list(raw, "name")
+    )
+    df["language"] = df["language"].fillna(df["language_code"]).fillna(df.get("original_language"))
     keep = [
         "id",
         "imdb_id",
@@ -61,6 +76,10 @@ def load_movies() -> pd.DataFrame:
         "budget",
         "revenue",
         "release_year",
+        "country",
+        "country_code",
+        "language",
+        "language_code",
     ]
     for col in keep:
         if col not in df.columns:
@@ -226,10 +245,10 @@ def merge_data() -> pd.DataFrame:
     merged["duration_minutes"] = merged["duration_minutes"].fillna(merged["duration_minutes_engagement"])
     merged["viewership"] = merged["viewership"].fillna(merged["hours_viewed"])
     merged["genres"] = merged["genres"].apply(lambda g: g if isinstance(g, list) else [])
-    merged["country"] = merged["country"].fillna("Unknown")
-    merged["language"] = pd.NA  # Placeholder; enrich if language data is added.
+    merged["country"] = merged["country"].fillna(merged["country_engagement"]).fillna("Unknown")
+    merged["language"] = merged["language"].fillna("Unknown")
     merged["actor_rating"] = pd.NA  # Placeholder for future enrichment.
-    merged["region"] = merged["country"].apply(_to_region)
+    merged["region"] = merged.apply(lambda row: _to_region(row.get("country"), row.get("country_code")), axis=1)
     merged["id"] = merged["id"].fillna(merged["tconst"])
     return merged[
         [
@@ -252,23 +271,99 @@ def merge_data() -> pd.DataFrame:
     ]
 
 
-def _to_region(country: str) -> str:
-    if not isinstance(country, str):
-        return "Unknown"
-    country_upper = country.upper()
-    if country_upper in {"US", "USA", "CANADA", "MEXICO"}:
-        return "North America"
-    if country_upper in {"UK", "UNITED KINGDOM", "FRANCE", "GERMANY", "SPAIN", "ITALY", "NETHERLANDS"}:
-        return "Europe"
-    if country_upper in {"INDIA", "CHINA", "JAPAN", "KOREA", "SOUTH KOREA"}:
-        return "Asia"
-    if country_upper in {"BRAZIL", "ARGENTINA", "CHILE"}:
-        return "South America"
-    if country_upper in {"AUSTRALIA", "NEW ZEALAND"}:
-        return "Oceania"
-    if country_upper in {"SOUTH AFRICA", "NIGERIA", "KENYA"}:
-        return "Africa"
-    return "Other"
+def _first_from_list(raw: object, key: str) -> Optional[str]:
+    if raw is None or (isinstance(raw, float) and np.isnan(raw)):
+        return None
+    items = raw
+    try:
+        if isinstance(raw, str):
+            items = literal_eval(raw)
+    except Exception:
+        return None
+    if isinstance(items, list):
+        for item in items:
+            if isinstance(item, dict) and item.get(key):
+                return item.get(key)
+    return None
+
+
+COUNTRY_REGION_MAP = {
+    "US": "North America",
+    "USA": "North America",
+    "CANADA": "North America",
+    "CA": "North America",
+    "MEXICO": "North America",
+    "MX": "North America",
+    "GB": "Europe",
+    "UK": "Europe",
+    "UNITED KINGDOM": "Europe",
+    "FR": "Europe",
+    "FRANCE": "Europe",
+    "DE": "Europe",
+    "GERMANY": "Europe",
+    "ES": "Europe",
+    "SPAIN": "Europe",
+    "IT": "Europe",
+    "ITALY": "Europe",
+    "NL": "Europe",
+    "NETHERLANDS": "Europe",
+    "IE": "Europe",
+    "IRELAND": "Europe",
+    "BE": "Europe",
+    "BELGIUM": "Europe",
+    "DK": "Europe",
+    "DENMARK": "Europe",
+    "CZ": "Europe",
+    "CZECH REPUBLIC": "Europe",
+    "SE": "Europe",
+    "SWEDEN": "Europe",
+    "NO": "Europe",
+    "NORWAY": "Europe",
+    "PL": "Europe",
+    "POLAND": "Europe",
+    "RU": "Europe",
+    "RUSSIA": "Europe",
+    "CN": "Asia",
+    "CHINA": "Asia",
+    "JP": "Asia",
+    "JAPAN": "Asia",
+    "IN": "Asia",
+    "INDIA": "Asia",
+    "KR": "Asia",
+    "KOREA": "Asia",
+    "SOUTH KOREA": "Asia",
+    "HK": "Asia",
+    "HONG KONG": "Asia",
+    "TH": "Asia",
+    "THAILAND": "Asia",
+    "AU": "Oceania",
+    "AUSTRALIA": "Oceania",
+    "NZ": "Oceania",
+    "NEW ZEALAND": "Oceania",
+    "BR": "South America",
+    "BRAZIL": "South America",
+    "AR": "South America",
+    "ARGENTINA": "South America",
+    "CL": "South America",
+    "CHILE": "South America",
+    "ZA": "Africa",
+    "SOUTH AFRICA": "Africa",
+    "NG": "Africa",
+    "NIGERIA": "Africa",
+    "KE": "Africa",
+    "KENYA": "Africa",
+}
+
+
+def _to_region(country: Optional[str], country_code: Optional[str] = None) -> str:
+    def _lookup(val: Optional[str]) -> Optional[str]:
+        if not isinstance(val, str):
+            return None
+        key = val.upper()
+        return COUNTRY_REGION_MAP.get(key)
+
+    region = _lookup(country_code) or _lookup(country)
+    return region or "Other"
 
 
 def _export_json(df: pd.DataFrame, path: Path, sample: bool = False) -> None:

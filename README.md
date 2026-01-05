@@ -22,7 +22,7 @@ Usage
 -----
 1) Fetch data (see `data/schema.md`) into `data/raw/`.
 2) Run `python scripts/prepare_data.py` to generate `public/data/processed.json` and `public/data/sample_processed.json`.
-3) Open `index.html` in a browser or host the repo on GitHub Pages.
+3) run the command: python -m http.server 8000 and view the dashboard on: http://localhost:8000/index.html
 
 Notes
 -----

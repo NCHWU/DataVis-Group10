@@ -8,10 +8,6 @@ __pycache__/
 .env
 .python-version
 
-# Data outputs
-public/data/processed.json
-public/data/processed.csv
-
 # Node/JS (if added later)
 node_modules/
 dist/
