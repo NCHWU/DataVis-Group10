@@ -11,7 +11,7 @@ import os
 import pandas as pd
 
 
-def download_video(url, out_path="video.mp4", retries=10, delay=3):
+def download_video(url, out_path="video.mp4", retries=5, delay=3):
     """
     Downloads a YouTube video using yt-dlp with retries.
     Retries the exact same format if it fails.
@@ -157,7 +157,10 @@ else:
 # movies = ["UP"]
 df = pd.read_csv("top_movies_by_country_size.csv")  # replace with your path
 movies = df['title'].tolist()
-print(movies)
+
+failed_file = "results/failed_movies.txt"
+
+
 for movie in movies:
     if movie in done_titles:
         print(f"Skipping {movie}, already processed.")
@@ -174,6 +177,14 @@ for movie in movies:
 
     download_start = time.time()
     path = download_video(url)
+    if path is None:
+        # Save failed movie title
+        print(f"Download failed for {movie}, saving to failed list.")
+        with open(failed_file, "a", encoding="utf-8") as f:
+            f.write(movie + "\n")
+        continue  # skip to next movie
+
+
     download_end = time.time()
     print("Download duration: " + str(download_end - download_start))
 
