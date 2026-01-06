@@ -3,7 +3,8 @@ import yt_dlp
 def find_trailer(movie_title):
     query = f"ytsearch1:{movie_title} official trailer"  # '1' = return 1 result
     ydl_opts = {
-        'quiet': False,
+        'quiet': True,
+        'no_warnings': True,
         'skip_download': False,
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
