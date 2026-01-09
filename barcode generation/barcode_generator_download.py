@@ -5,11 +5,15 @@ import os
 from url_finder import find_trailer
 import time
 import re
-from encoder import pick_most_different_colors, get_barcode_png
+from encoder import pick_most_different_colors, get_barcode_png, pick_most_dominant_colors, show_four_colours
 import json
 import os
 import pandas as pd
 
+
+JSON_FLUSH_INTERVAL = 50
+json_buffer = []
+save_file = "results_nieuw"
 
 def download_video(url, out_path="video.mp4", retries=5, delay=3):
     """
@@ -68,6 +72,17 @@ def downsample_uniformly(lst, max_size=200):
     return new_list
 
 
+def remove_start(colors):
+    colors = colors[2::]
+    print(colors[0], colors[1])
+    i = 0
+    while i < len(colors) - 1 and np.linalg.norm(colors[i] - colors[i + 1]) < 0.5:
+        colors[i], colors[i + 1]
+        i += 1
+    colors_start_removed = colors[i+1:]
+
+    return colors_start_removed
+    
 def video_to_color_barcode(video_path, output="barcode.png", max_uniform_ratio = 0.5, sample_rate=5):
     cap = cv2.VideoCapture(video_path)
     # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 160)
@@ -97,13 +112,28 @@ def video_to_color_barcode(video_path, output="barcode.png", max_uniform_ratio =
 
 
     cap.release()
-
+    
+    avg_colors = remove_start(avg_colors)
+    
+    start_downsample = time.time()
     avg_colors = downsample_uniformly(avg_colors, 200)
+    end_downsample = time.time()
+    print("Time to downsample:", end_downsample - start_downsample)
+
+
+    start_avg = time.time()
     overall_avg = np.mean(np.stack(avg_colors), axis=0)
-    four_opposites = pick_most_different_colors(avg_colors)
+    end_avg = time.time()
+    print("Time to calculate average:", end_avg - start_avg)
 
 
-    return avg_colors, overall_avg, four_opposites
+    start_dom = time.time()
+    four_dominant = pick_most_dominant_colors(avg_colors)
+    # show_four_colours(four_dominant, 'dominant 4')
+    end_dom = time.time()
+    print("Time to pick dominant colors:", end_dom - start_dom)
+
+    return avg_colors, overall_avg, four_dominant
 
 
 
@@ -111,38 +141,21 @@ def safe_filename(name):
     # replace any invalid character with underscore
     return re.sub(r'[<>:"/\\|?*]', '_', name)
 
+def flush_json_buffer(json_path, buffer, existing_data):
+    if not buffer:
+        return existing_data
 
-def add_to_json(movie, avg_colors, overall_avg, four_opposites):
-    # prepare movie data
+    existing_data.extend(buffer)
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(existing_data, f, indent=4)
 
-    json_path = "results/movies_colors.json"
+    buffer.clear()
+    print("Flushed JSON to disk")
+    return existing_data
 
-
-    movie_data = {
-        "title": movie,
-        "avg_colors": [list(map(float, c)) for c in avg_colors],
-        "overall_avg": list(map(float, overall_avg)),
-        "four_opposites": [list(map(float, c)) for c in four_opposites]
-    }
-
-    # load existing JSON or start new
-    if os.path.exists(json_path):
-        with open(json_path, "r") as f:
-            all_data = json.load(f)
-    else:
-        all_data = []
-
-    # append new movie
-    all_data.append(movie_data)
-
-    # save back to JSON
-    with open(json_path, "w") as f:
-        json.dump(all_data, f, indent=4)
-
-    print("saved json")
 
 #skip movies in json:
-json_path = "results/movies_colors.json"
+json_path = f"{save_file}/movies_colors.json"
 
 # load existing movie titles if the JSON exists
 if os.path.exists(json_path):
@@ -154,11 +167,11 @@ else:
     done_titles = set()
 
 
-# movies = ["UP"]
-df = pd.read_csv("top_movies_by_country_size.csv")  # replace with your path
+# movies = ["One Battle After Another"]
+df = pd.read_csv("all_movie_titles.csv")  # replace with your path
 movies = df['title'].tolist()
 
-failed_file = "results/failed_movies.txt"
+failed_file = f"{save_file}/failed_movies.txt"
 
 
 for movie in movies:
@@ -167,11 +180,18 @@ for movie in movies:
         continue  # skip this movie
 
     print("For movie: " + movie)
-    print("time: " + str(time.time()))
+
     start = time.time()
 
     find_trailer_start = time.time()
     url = find_trailer(movie)
+
+    if url is None:
+        print(f"Could not find trailer for {movie}")
+        with open(failed_file, "a", encoding="utf-8") as f:
+            f.write(movie + "\n")
+        continue
+
     find_trailer_end = time.time()
     print("Find trailer duration: " + str(find_trailer_end - find_trailer_start))
 
@@ -189,10 +209,26 @@ for movie in movies:
     print("Download duration: " + str(download_end - download_start))
 
     s_barcode = time.time()
-    avg_colors, overall_avg, four_opposites = video_to_color_barcode( path, "results/" + safe_filename(movie) + ".png", 0.5)
-    add_to_json(movie, avg_colors, overall_avg, four_opposites)
-    get_barcode_png(avg_colors, "results/" + safe_filename(movie) + ".png")
+    avg_colors, overall_avg, four_opposites = video_to_color_barcode( path, f"{save_file}/" + safe_filename(movie) + ".png", 0.5)
     e_barcode = time.time()
+
+
+    json_start = time.time()
+    json_buffer.append({
+        "title": movie,
+        "avg_colors": [list(map(float, c)) for c in avg_colors],
+        "overall_avg": list(map(float, overall_avg)),
+        "four_opposites": [list(map(float, c)) for c in four_opposites]
+    })
+
+    if len(json_buffer) >= JSON_FLUSH_INTERVAL:
+        print("flushing json buffer")
+        all_data = flush_json_buffer(json_path, json_buffer, all_data)
+
+    json_end = time.time()
+    print(f"JSON duration: {json_end - json_start}")
+    get_barcode_png(avg_colors, f"{save_file}/" + safe_filename(movie) + ".png")
+
     print("Convertion time: ", e_barcode - s_barcode)
 
     tmp_file = "video.mp4"
@@ -206,3 +242,5 @@ for movie in movies:
     if os.path.exists(tmp_file):
         os.remove(tmp_file)
 
+
+all_data = flush_json_buffer(json_path, json_buffer, all_data)

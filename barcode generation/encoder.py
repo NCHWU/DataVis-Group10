@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.metrics import pairwise_distances
+from sklearn.cluster import KMeans, MiniBatchKMeans
 from skimage import color
 import cv2
 
@@ -22,6 +23,49 @@ def pick_most_different_colors(colors, n=4):
 
     # return the original RGB colors
     return colors[selected_indices]
+
+
+def pick_most_dominant_colors(colors, n=4):
+    """
+    Finds the n most dominant colors using OpenCV's K-Means.
+    :param colors: array-like of RGB colors, shape (N, 3) or an image (H, W, 3)
+    :param n: number of dominant colors to find 
+    :return: array of n RGB colors
+    """
+    pixels = np.float32(np.array(colors).reshape(-1, 3))
+
+    # Define criteria: (type, max_iter, epsilon)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
+    
+    # OpenCV kmeans returns (ret, label, center)
+    _, _, centers = cv2.kmeans(pixels, n, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+
+    return centers.astype(np.uint8)
+
+def show_four_colours(colours, save_name, save=True):
+    # # four_colors should be an array of shape (4, 3), values 0-255, RGB
+    # # OpenCV uses BGR, so we need to convert
+    four_colors_bgr = colours[:, ::-1].astype(np.uint8)
+
+    # create a square image
+    size = 100  # size of each color block
+    img = np.zeros((2 * size, 2 * size, 3), dtype=np.uint8)
+
+    # assign colors to each quadrant
+    img[0:size, 0:size] = four_colors_bgr[0]  # top-left
+    img[0:size, size:2 * size] = four_colors_bgr[1]  # top-right
+    img[size:2 * size, 0:size] = four_colors_bgr[2]  # bottom-left
+    img[size:2 * size, size:2 * size] = four_colors_bgr[3]  # bottom-right
+
+    # show image
+    # cv2.imshow("4 Colors", img)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
+
+    if save:
+        cv2.imwrite(f"{save_name}.png", img)
+
+
 
 def get_barcode_png(avg_colors, save_file):
     # build barcode, niet tijdrovend
