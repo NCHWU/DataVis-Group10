@@ -334,6 +334,123 @@ svg text {
   color: var(--text);
 }
 
+/* Movie Detail View with Barcode and Glyph */
+.movie-detail-view {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.movie-header h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.8rem;
+  color: #fff;
+}
+
+.movie-meta {
+  margin: 0.25rem 0;
+  color: #aaa;
+  font-size: 0.95rem;
+}
+
+/* Barcode Section */
+.barcode-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.barcode-section h4,
+.glyph-section h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.barcode-container {
+  width: 100%;
+  height: 100px;
+  background: #0a0a0a;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.barcode-container canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Color Swatches */
+.color-swatches {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.color-swatches .label {
+  font-size: 0.9rem;
+  color: #aaa;
+  font-weight: 600;
+}
+
+.swatch-grid {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.swatch {
+  width: 50px;
+  height: 50px;
+  border-radius: 6px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+  cursor: pointer;
+}
+
+.swatch:hover {
+  transform: scale(1.1);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Glyph Section */
+.glyph-section {
+  margin: 1rem 0;
+}
+
+.glyph-container {
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.glyph-container svg {
+  display: block;
+  margin: 0 auto;
+}
+
+/* Movie Details */
+.movie-details {
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.movie-details p {
+  margin: 0.5rem 0;
+  color: #ddd;
+  font-size: 0.95rem;
+}
+
+.movie-details strong {
+  color: #aaa;
+  font-weight: 600;
+}
+
 @media (max-width: 720px) {
   .hero {
     flex-direction: column;
@@ -341,5 +458,14 @@ svg text {
   }
   .stack {
     padding: 0 1.5rem 2rem 1.5rem;
+  }
+
+  .movie-header h3 {
+    font-size: 1.5rem;
+  }
+
+  .swatch {
+    width: 40px;
+    height: 40px;
   }
 }
