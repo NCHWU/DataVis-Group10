@@ -22,25 +22,6 @@
           Explore global and regional movie trends across viewership, budgets, and ratings. Start with the
           overview, scrub through time, then dive into scatter and radar comparisons.
         </p>
-        <div class="controls">
-          <label>
-            Region / Country
-            <select id="region-filter"></select>
-          </label>
-          <label>
-            Genre
-            <select id="genre-filter"></select>
-          </label>
-          <label class="range">
-            Year from
-            <select id="year-min"></select>
-          </label>
-          <label class="range">
-            to
-            <select id="year-max"></select>
-          </label>
-          <button id="reset-filters" class="ghost">Reset</button>
-        </div>
       </div>
       <div class="badge">Live Prototype</div>
     </header>
@@ -77,7 +58,7 @@
           <div id="top-rated-panel" class="compare-panel">
             <div class="compare-header">
               <h4>Top 5 by rating</h4>
-              <p class="subhead">Filtered by current Region/Genre/Years</p>
+              <p class="subhead">Filtered by selected years</p>
             </div>
             <div id="top-rated-list" class="compare-grid">
               <p class="muted">Loading top titles…</p>
@@ -88,15 +69,34 @@
 
       <section class="card wide">
         <h2 id="timeline-title">Timeline View</h2>
-        <p class="subhead">Average budget + rating over time</p>
+        <p class="subhead">Average budget + rating over time — drag to select a year range</p>
         <div id="timeline"></div>
+      </section>
+
+      <section class="card wide">
+        <h2>Genre × Region Color Matrix</h2>
+        <div class="matrix-header">
+          <p class="subhead">Average barcode color and title counts by genre and region</p>
+          <button id="matrix-reset" class="ghost" type="button">Reset matrix filters</button>
+        </div>
+        <div id="matrix"></div>
       </section>
 
       <section class="card wide">
         <h2>Deep Dive</h2>
         <p class="subhead">Budget vs. rating scatter; brush to compare selections</p>
         <div id="scatter"></div>
-        <div class="placeholder">Radar comparison placeholder</div>
+        <div id="deepdive-panel" class="compare-panel">
+          <div class="compare-header">
+            <div>
+              <h4>Deep Dive picks (up to 3)</h4>
+              <p class="subhead">Click points in the scatter to add/remove selections.</p>
+            </div>
+            <button id="deepdive-clear" class="ghost" type="button">Clear picks</button>
+          </div>
+          <div id="deepdive-grid" class="compare-grid"></div>
+          <div id="deepdive-combined" class="deepdive-combined"></div>
+        </div>
       </section>
     </main>
 

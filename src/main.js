@@ -2,21 +2,27 @@ const state = {
   data: [],
   filtered: [],
   years: { min: 1900, max: 2030 },
+  timelineSelection: { min: 1900, max: 2030 },
   compare: [],
   selected: null,
   barcodeColors: {},
+  scatterGenres: new Set(),
+  deepDive: [],
+  selectedRegions: new Set(),
+  selectedGenres: new Set(),
+  deepDiveHidden: new Set(),
 };
 
 const regionFilter = document.querySelector("#region-filter");
 const genreFilter = document.querySelector("#genre-filter");
-const yearMinInput = document.querySelector("#year-min");
-const yearMaxInput = document.querySelector("#year-max");
 const resetBtn = document.querySelector("#reset-filters");
 const searchInput = document.querySelector("#search-title");
 const searchResult = document.querySelector("#search-result");
 const searchSuggestions = document.querySelector("#search-suggestions");
 const compareAddBtn = document.querySelector("#compare-add");
 const compareClearBtn = document.querySelector("#compare-clear");
+const deepDiveClearBtn = document.querySelector("#deepdive-clear");
+const matrixResetBtn = document.querySelector("#matrix-reset");
 
 async function loadData() {
   const candidates = [
@@ -102,35 +108,51 @@ async function loadBarcodeColors() {
 
 function populateFilters(data) {
   const regions = Array.from(new Set(data.map((d) => regionLabel(d)))).filter(Boolean).sort();
-  regionFilter.innerHTML =
-    `<option value=\"\">All regions</option>` + regions.map((r) => `<option value=\"${r}\">${r}</option>`).join("");
+  if (regionFilter) {
+    regionFilter.innerHTML =
+      `<option value=\"\">All regions</option>` +
+      regions.map((r) => `<option value=\"${r}\">${r}</option>`).join("");
+  }
 
   const genres = Array.from(new Set(data.flatMap((d) => d.genres || []))).sort();
-  genreFilter.innerHTML = `<option value=\"\">All genres</option>` +
-    genres.map((g) => `<option value=\"${g}\">${g}</option>`).join("");
+  if (genreFilter) {
+    genreFilter.innerHTML =
+      `<option value=\"\">All genres</option>` +
+      genres.map((g) => `<option value=\"${g}\">${g}</option>`).join("");
+  }
 
   const years = data.map((d) => d.release_year).filter((y) => Number.isFinite(y));
   const minYear = Math.min(...years);
   const maxYear = Math.max(...years);
   state.years = { min: minYear, max: maxYear };
-  setYearOptions(yearMinInput, minYear, maxYear, minYear);
-  setYearOptions(yearMaxInput, minYear, maxYear, maxYear);
+  state.timelineSelection = { min: minYear, max: maxYear };
 }
 
 function applyFilters() {
-  const region = regionFilter.value;
-  const genre = genreFilter.value;
-  const minYear = Number(yearMinInput.value) || state.years.min;
-  const maxYear = Number(yearMaxInput.value) || state.years.max;
+  const minYear = state.timelineSelection.min;
+  const maxYear = state.timelineSelection.max;
 
-  state.filtered = state.data.filter((d) => {
-    const matchesRegion = !region || regionLabel(d) === region;
-    const matchesGenre = !genre || (d.genres || []).includes(genre);
+  const source = baseDataForSelections();
+  state.filtered = source.filter((d) => {
     const matchesYear =
       (!d.release_year && d.release_year !== 0) || (d.release_year >= minYear && d.release_year <= maxYear);
-    return matchesRegion && matchesGenre && matchesYear;
+    return matchesYear;
   });
+  const filteredIds = new Set(state.filtered.map((d) => String(d.id)));
+  state.deepDive = state.deepDive.filter((id) => filteredIds.has(String(id)));
   render();
+}
+
+function baseDataForSelections() {
+  const hasRegions = state.selectedRegions.size > 0;
+  const hasGenres = state.selectedGenres.size > 0;
+
+  return state.data.filter((d) => {
+    const matchesRegion = !hasRegions || state.selectedRegions.has(regionLabel(d));
+    const matchesGenre =
+      !hasGenres || (d.genres || []).some((g) => state.selectedGenres.has(g));
+    return matchesRegion && matchesGenre;
+  });
 }
 
 function regionLabel(d) {
@@ -141,40 +163,31 @@ function regionLabel(d) {
 
 function render() {
   renderSummary(state.filtered);
-  renderTimeline(state.filtered);
+  renderTimeline(baseDataForSelections());
+  renderGenreRegionMatrix(state.data);
   renderScatter(state.filtered);
-  renderSearchResult(searchInput.value, state.filtered);
+  renderSearchResult(searchInput.value, state.data);
   renderCompare();
   renderTopRated();
+  renderDeepDiveSelection();
 }
 
-function setYearOptions(selectEl, minYear, maxYear, selectedValue) {
-  if (!selectEl) return;
-  const options = [];
-  if (selectEl.id === "year-min") {
-    for (let y = minYear; y <= maxYear; y += 1) {
-      options.push(`<option value="${y}">${y}</option>`);
-    }
-  } else {
-    for (let y = maxYear; y >= minYear; y -= 1) {
-      options.push(`<option value="${y}">${y}</option>`);
-    }
-  }
-  selectEl.innerHTML = options.join("");
-  selectEl.value = selectedValue;
-}
 
 function currentRegionLabel() {
-  return regionFilter.value || "All regions";
+  if (!state.selectedRegions.size) return "All regions";
+  const selected = Array.from(state.selectedRegions).sort();
+  return selected.length <= 3 ? selected.join(", ") : `${selected.slice(0, 3).join(", ")} +${selected.length - 3}`;
 }
 
 function currentGenreLabel() {
-  return genreFilter.value || "All genres";
+  if (!state.selectedGenres.size) return "All genres";
+  const selected = Array.from(state.selectedGenres).sort();
+  return selected.length <= 3 ? selected.join(", ") : `${selected.slice(0, 3).join(", ")} +${selected.length - 3}`;
 }
 
 function currentYearRangeLabel() {
-  const minYear = Number(yearMinInput.value) || state.years.min;
-  const maxYear = Number(yearMaxInput.value) || state.years.max;
+  const minYear = state.timelineSelection.min;
+  const maxYear = state.timelineSelection.max;
   return `${minYear}–${maxYear}`;
 }
 
@@ -237,7 +250,26 @@ function renderTimeline(data) {
     return;
   }
 
-  const genreLabel = genreFilter.value ? `${genreFilter.value}` : "All genres";
+  const selectedMin = state.timelineSelection.min;
+  const selectedMax = state.timelineSelection.max;
+  const selectedData = data.filter(
+    (d) =>
+      (!d.release_year && d.release_year !== 0) ||
+      (d.release_year >= selectedMin && d.release_year <= selectedMax)
+  );
+  const avgBudget = d3.mean(selectedData, (d) => d.budget) || 0;
+  const avgRating = d3.mean(selectedData, (d) => d.rating) || 0;
+
+  const summaryNode = container
+    .append("div")
+    .attr("class", "timeline-summary")
+    .text(
+      `Selected ${selectedMin}–${selectedMax} • Avg budget $${(avgBudget / 1_000_000).toFixed(1)}M • Avg rating ${
+        avgRating ? avgRating.toFixed(2) : "—"
+      }`
+    );
+
+  const genreLabel = genreFilter && genreFilter.value ? `${genreFilter.value}` : "All genres";
 
   const agg = d3
     .rollups(
@@ -251,13 +283,16 @@ function renderTimeline(data) {
     .filter(([year]) => !Number.isNaN(year))
     .sort((a, b) => a[0] - b[0]);
 
-  const width = container.node().clientWidth || 600;
-  const height = container.node().clientHeight || 320;
-  const margin = { top: 20, right: 50, bottom: 30, left: 50 };
+  const containerNode = container.node();
+  const width = containerNode.clientWidth || 600;
+  const height = containerNode.clientHeight || 320;
+  const summaryHeight = summaryNode.node().getBoundingClientRect().height || 0;
+  const chartHeight = Math.max(260, height - summaryHeight - 12);
+  const margin = { top: 70, right: 50, bottom: 36, left: 50 };
 
-  const svg = container.append("svg").attr("width", width).attr("height", height);
+  const svg = container.append("svg").attr("width", width).attr("height", chartHeight);
   const innerWidth = width - margin.left - margin.right;
-  const innerHeight = height - margin.top - margin.bottom;
+  const innerHeight = chartHeight - margin.top - margin.bottom;
 
   const x = d3
     .scaleLinear()
@@ -319,13 +354,13 @@ function renderTimeline(data) {
   svg
     .append("text")
     .attr("x", margin.left)
-    .attr("y", margin.top - 6)
+    .attr("y", margin.top - 58)
     .text(`Budget (left) • Rating (right) — ${genreLabel}`);
 
   // Legend
   svg
     .append("g")
-    .attr("transform", `translate(${margin.left},${margin.top})`)
+    .attr("transform", `translate(${margin.left},${margin.top - 52})`)
     .append("foreignObject")
     .attr("width", 260)
     .attr("height", 40)
@@ -346,14 +381,85 @@ function renderTimeline(data) {
   const focusRating = focus.append("circle").attr("r", 6).attr("fill", "#3cb4ff").attr("stroke", "#0c0f1a").attr("stroke-width", 2);
 
   const bisect = d3.bisector((d) => d[0]).center;
+  
+  const labelGroup = svg.append("g").attr("class", "brush-label");
+  const startLabel = labelGroup
+    .append("text")
+    .attr("y", margin.top - 18)
+    .attr("text-anchor", "middle")
+    .attr("fill", "#4ee1a0");
+
+  const endLabel = labelGroup
+    .append("text")
+    .attr("y", margin.top - 18)
+    .attr("text-anchor", "middle")
+    .attr("fill", "#4ee1a0");
+
+  const setRangeLabels = (minYear, maxYear) => {
+    startLabel.attr("x", x(minYear)).text(minYear);
+    endLabel.attr("x", x(maxYear)).text(maxYear);
+  };
+
+  setRangeLabels(selectedMin, selectedMax);
+
+  // Add brush for time range selection
+  const brush = d3.brushX()
+    .extent([[margin.left, margin.top], [margin.left + innerWidth, margin.top + innerHeight]])
+    .on("brush", (event) => {
+      if (!event.selection) return;
+      const [x0, x1] = event.selection;
+      const minYear = Math.round(x.invert(x0));
+      const maxYear = Math.round(x.invert(x1));
+      setRangeLabels(minYear, maxYear);
+    })
+    .on("end", (event) => {
+      if (!event.sourceEvent) {
+        return;
+      }
+      if (!event.selection) {
+        // Reset to full range if brush cleared
+        state.timelineSelection = { min: state.years.min, max: state.years.max };
+        setRangeLabels(state.years.min, state.years.max);
+      } else {
+        const [x0, x1] = event.selection;
+        const minYear = Math.round(x.invert(x0));
+        const maxYear = Math.round(x.invert(x1));
+        state.timelineSelection = { min: minYear, max: maxYear };
+        setRangeLabels(minYear, maxYear);
+      }
+      applyFilters();
+    });
+
+  // Add brush group
+  svg.append("g")
+    .attr("class", "brush")
+    .call(brush);
+
+  // Style brush
+  svg.selectAll(".brush .overlay")
+    .style("cursor", "crosshair");
+
+  svg.selectAll(".brush .selection")
+    .attr("fill", "#4ee1a0")
+    .attr("fill-opacity", 0.2)
+    .attr("stroke", "#4ee1a0")
+    .attr("stroke-width", 1);
+
+  svg.selectAll(".brush .handle")
+    .attr("fill", "#4ee1a0")
+    .attr("stroke", "#0c0f1a")
+    .attr("stroke-width", 2);
+
+  // Initial brush position based on current selection
+  if (state.timelineSelection.min !== state.years.min || state.timelineSelection.max !== state.years.max) {
+    const x0 = x(state.timelineSelection.min);
+    const x1 = x(state.timelineSelection.max);
+    svg.select(".brush").call(brush.move, [x0, x1]);
+  }
+
+  // Tooltip on hover (still show data values when hovering)
   svg
-    .append("rect")
-    .attr("fill", "transparent")
-    .attr("pointer-events", "all")
-    .attr("x", margin.left)
-    .attr("y", margin.top)
-    .attr("width", innerWidth)
-    .attr("height", innerHeight)
+    .select(".brush .overlay")
     .on("mousemove", (event) => {
       const [mx] = d3.pointer(event, svg.node());
       const year = Math.round(x.invert(mx));
@@ -390,41 +496,69 @@ function renderScatter(data) {
     return;
   }
 
+  const genreKey = (d) => (d.genres && d.genres.length ? d.genres[0] : "Unknown");
   const filtered = data.filter((d) => d.budget > 0 && d.rating);
-  const regions = Array.from(new Set(filtered.map((d) => d.region || "Unknown")));
-  const color = d3.scaleOrdinal().domain(regions).range(d3.schemeTableau10);
+  const genreValues = filtered.map((d) => genreKey(d));
+  const genres = Array.from(new Set(genreValues)).sort();
+  const color = d3.scaleOrdinal().domain(genres).range(d3.schemeTableau10);
+
+  if (!genres.length) {
+    container.append("div").text("No genres available for current filters.");
+    return;
+  }
+
+  const hasSelection = state.scatterGenres.size > 0;
+  const activeGenres = hasSelection ? new Set(state.scatterGenres) : null;
+
+  const visible = filtered.filter((d) => {
+    if (!hasSelection) return true;
+    return activeGenres.has(genreKey(d));
+  });
 
   // Downsample if very dense to keep plot readable.
   const maxPoints = 800;
-  const step = Math.max(1, Math.ceil(filtered.length / maxPoints));
-  const plotted = filtered.filter((_, i) => i % step === 0);
+  const step = Math.max(1, Math.ceil(visible.length / maxPoints));
+  const plotted = visible.filter((_, i) => i % step === 0);
 
   // Legend
-  container
-    .append("div")
-    .attr("class", "legend scatter-legend")
-    .html(
-      regions
-        .map((r) => `<span class="swatch" style="background:${color(r)}"></span>${r}`)
-        .join("")
-    );
+  const legend = container.append("div").attr("class", "legend scatter-legend");
+  legend
+    .selectAll("button")
+    .data(genres, (d) => d)
+    .join("button")
+    .attr("type", "button")
+    .attr("class", (d) => {
+      if (!hasSelection) return "legend-item";
+      return activeGenres.has(d) ? "legend-item active" : "legend-item inactive";
+    })
+    .on("click", (_, genre) => {
+      if (state.scatterGenres.has(genre)) {
+        state.scatterGenres.delete(genre);
+      } else {
+        state.scatterGenres.add(genre);
+      }
+      renderScatter(data);
+    })
+    .html((d) => `<span class="swatch" style="background:${color(d)}"></span><span>${d}</span>`);
 
   const width = container.node().clientWidth || 600;
   const height = container.node().clientHeight || 320;
+  const legendHeight = legend.node().getBoundingClientRect().height || 0;
+  const svgHeight = Math.max(260, height - legendHeight - 8);
   const margin = { top: 20, right: 20, bottom: 40, left: 55 };
 
-  const svg = container.append("svg").attr("width", width).attr("height", height);
+  const svg = container.append("svg").attr("width", width).attr("height", svgHeight);
 
   const x = d3
     .scaleLinear()
     .domain([0, d3.max(plotted, (d) => d.budget) * 1.1 || 1])
     .range([margin.left, width - margin.right]);
-  const y = d3.scaleLinear().domain([0, 10]).range([height - margin.bottom, margin.top]);
+  const y = d3.scaleLinear().domain([0, 10]).range([svgHeight - margin.bottom, margin.top]);
 
   svg
     .append("g")
     .attr("class", "axis")
-    .attr("transform", `translate(0,${height - margin.bottom})`)
+    .attr("transform", `translate(0,${svgHeight - margin.bottom})`)
     .call(d3.axisBottom(x).tickFormat((d) => `$${(d / 1_000_000).toFixed(0)}M`));
 
   svg
@@ -444,6 +578,8 @@ function renderScatter(data) {
     .style("font-size", "12px")
     .style("opacity", 0);
 
+  const selectedIds = new Set(state.deepDive.map((id) => String(id)));
+
   svg
     .append("g")
     .selectAll("circle")
@@ -452,8 +588,11 @@ function renderScatter(data) {
     .attr("cx", (d) => x(d.budget))
     .attr("cy", (d) => y(d.rating))
     .attr("r", 5)
-    .attr("fill", (d) => color(d.region))
+    .attr("fill", (d) => color(genreKey(d)))
     .attr("fill-opacity", 0.7)
+    .style("cursor", "pointer")
+    .attr("stroke", (d) => (selectedIds.has(String(d.id)) ? "#fff" : "none"))
+    .attr("stroke-width", (d) => (selectedIds.has(String(d.id)) ? 1.5 : 0))
     .on("mouseenter", (event, d) => {
       tooltip
         .style("opacity", 1)
@@ -463,17 +602,308 @@ function renderScatter(data) {
           `<strong>${d.title}</strong><br/>Budget: $${(d.budget / 1_000_000).toFixed(1)}M<br/>Rating: ${d.rating}`
         );
     })
+    .on("click", (_, d) => {
+      const id = d.id;
+      const existing = state.deepDive.findIndex((m) => String(m) === String(id));
+      if (existing >= 0) {
+        state.deepDive.splice(existing, 1);
+      } else if (state.deepDive.length < 3) {
+        state.deepDive.push(id);
+      } else {
+        return;
+      }
+      renderScatter(data);
+      renderDeepDiveSelection();
+    })
     .on("mouseleave", () => tooltip.style("opacity", 0));
+
+  const genreLabel = hasSelection
+    ? Array.from(activeGenres).sort().join(", ")
+    : "All genres";
 
   svg
     .append("text")
     .attr("x", margin.left)
     .attr("y", margin.top - 6)
-    .text(`Budget vs. rating — ${genreFilter.value || "All genres"}`);
+    .text(`Budget vs. rating — ${genreLabel}`);
 }
 
-function renderSearchResult(query, data = state.filtered) {
-  const source = data && data.length ? data : state.data;
+function parseMetric(value) {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[$,]/g, "");
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function colorKey(rgb) {
+  return `${rgb[0]},${rgb[1]},${rgb[2]}`;
+}
+
+function adjustColor(rgb, factor) {
+  return rgb.map((v) => clamp(Math.round(v * factor), 20, 240));
+}
+
+function kMeansColors(colors, k) {
+  if (!colors.length) return [];
+  const unique = [];
+  const seen = new Set();
+  colors.forEach((c) => {
+    const key = colorKey(c);
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(c);
+    }
+  });
+
+  if (unique.length <= k) {
+    const result = [...unique];
+    let idx = 0;
+    const factors = [1.15, 0.9, 1.25, 0.75, 1.05];
+    while (result.length < k) {
+      const base = unique[idx % unique.length];
+      result.push(adjustColor(base, factors[idx % factors.length]));
+      idx += 1;
+    }
+    return result.slice(0, k);
+  }
+
+  let centers = unique.slice(0, k).map((c) => [...c]);
+  for (let iter = 0; iter < 8; iter += 1) {
+    const clusters = Array.from({ length: k }, () => []);
+    colors.forEach((c) => {
+      let best = 0;
+      let bestDist = Infinity;
+      centers.forEach((center, i) => {
+        const dr = c[0] - center[0];
+        const dg = c[1] - center[1];
+        const db = c[2] - center[2];
+        const dist = dr * dr + dg * dg + db * db;
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = i;
+        }
+      });
+      clusters[best].push(c);
+    });
+
+    centers = centers.map((center, i) => {
+      const cluster = clusters[i];
+      if (!cluster.length) {
+        return [...colors[Math.floor(Math.random() * colors.length)]];
+      }
+      const sums = cluster.reduce(
+        (acc, c) => [acc[0] + c[0], acc[1] + c[1], acc[2] + c[2]],
+        [0, 0, 0]
+      );
+      return sums.map((s) => Math.round(s / cluster.length));
+    });
+  }
+
+  return centers;
+}
+
+function renderGenreRegionMatrix(data) {
+  const container = d3.select("#matrix");
+  container.selectAll("*").remove();
+  if (!data.length) {
+    container.append("div").text("No data for current filters.");
+    return;
+  }
+
+  const regions = Array.from(new Set(data.map((d) => regionLabel(d)))).filter(Boolean).sort();
+  const genres = Array.from(new Set(data.flatMap((d) => d.genres || []))).filter(Boolean).sort();
+
+  if (!regions.length || !genres.length) {
+    container.append("div").text("No region/genre data available.");
+    return;
+  }
+
+  const keyFor = (genre, region) => `${genre}||${region}`;
+  const stats = new Map();
+
+  data.forEach((movie) => {
+    const region = regionLabel(movie);
+    const movieGenres = movie.genres && movie.genres.length ? movie.genres : ["Unknown"];
+    const colorData = state.barcodeColors[movie.title];
+    const opposites = colorData && Array.isArray(colorData.four_opposites) ? colorData.four_opposites : null;
+
+    movieGenres.forEach((genre) => {
+      const key = keyFor(genre, region);
+      const current = stats.get(key) || { count: 0, colors: [] };
+      current.count += 1;
+      if (opposites && opposites.length) {
+        opposites.forEach((rgb) => {
+          if (!rgb || rgb.length < 3) return;
+          const r = Math.round(rgb[0]);
+          const g = Math.round(rgb[1]);
+          const b = Math.round(rgb[2]);
+          current.colors.push([r, g, b]);
+        });
+      }
+      stats.set(key, current);
+    });
+  });
+
+  const activeRegions = regions;
+  const activeGenres = genres;
+
+  const cellSize = 36;
+  const margin = { top: 70, right: 20, bottom: 20, left: 140 };
+  const width = margin.left + activeRegions.length * cellSize + margin.right;
+  const height = margin.top + activeGenres.length * cellSize + margin.bottom;
+
+  const svg = container.append("svg").attr("width", width).attr("height", height);
+
+  const x = d3.scaleBand().domain(activeRegions).range([margin.left, margin.left + activeRegions.length * cellSize]).padding(0.08);
+  const y = d3.scaleBand().domain(activeGenres).range([margin.top, margin.top + activeGenres.length * cellSize]).padding(0.08);
+
+  svg
+    .append("g")
+    .attr("class", "matrix-axis")
+    .attr("transform", `translate(0,${margin.top - 10})`)
+    .call(d3.axisTop(x).tickSize(0))
+    .selectAll("text")
+    .attr("text-anchor", "start")
+    .attr("transform", "rotate(-35)")
+    .style("cursor", "pointer")
+    .attr("class", (d) => (state.selectedRegions.has(d) ? "active" : ""))
+    .on("click", (_, region) => {
+      if (state.selectedRegions.has(region)) {
+        state.selectedRegions.delete(region);
+      } else {
+        state.selectedRegions.add(region);
+      }
+      applyFilters();
+    });
+
+  svg
+    .append("g")
+    .attr("class", "matrix-axis")
+    .attr("transform", `translate(${margin.left - 10},0)`)
+    .call(d3.axisLeft(y).tickSize(0))
+    .selectAll("text")
+    .style("cursor", "pointer")
+    .attr("class", (d) => (state.selectedGenres.has(d) ? "active" : ""))
+    .on("click", (_, genre) => {
+      if (state.selectedGenres.has(genre)) {
+        state.selectedGenres.delete(genre);
+      } else {
+        state.selectedGenres.add(genre);
+      }
+      applyFilters();
+    });
+
+  const cells = [];
+  activeGenres.forEach((genre) => {
+    activeRegions.forEach((region) => {
+      const key = keyFor(genre, region);
+      const entry = stats.get(key) || { count: 0, colors: [] };
+      const usableColors = entry.colors.filter((c) => c[0] + c[1] + c[2] > 30);
+      const sourceColors = usableColors.length ? usableColors : entry.colors;
+      const centers = kMeansColors(sourceColors, 4);
+      const topColors = centers.length
+        ? centers.map((c) => `rgb(${c[0]}, ${c[1]}, ${c[2]})`)
+        : ["rgb(20, 24, 35)", "rgb(20, 24, 35)", "rgb(20, 24, 35)", "rgb(20, 24, 35)"];
+      cells.push({
+        genre,
+        region,
+        count: entry.count,
+        colors: topColors,
+      });
+    });
+  });
+
+  const cellGroup = svg.append("g");
+  const cell = cellGroup
+    .selectAll("g")
+    .data(cells)
+    .join("g")
+    .attr("class", "matrix-cell")
+    .attr("transform", (d) => `translate(${x(d.region)},${y(d.genre)})`);
+
+  const quadW = x.bandwidth() / 2;
+  const quadH = y.bandwidth() / 2;
+  cell
+    .append("rect")
+    .attr("width", quadW)
+    .attr("height", quadH)
+    .attr("x", 0)
+    .attr("y", 0)
+    .attr("fill", (d) => d.colors[0]);
+  cell
+    .append("rect")
+    .attr("width", quadW)
+    .attr("height", quadH)
+    .attr("x", quadW)
+    .attr("y", 0)
+    .attr("fill", (d) => d.colors[1]);
+  cell
+    .append("rect")
+    .attr("width", quadW)
+    .attr("height", quadH)
+    .attr("x", 0)
+    .attr("y", quadH)
+    .attr("fill", (d) => d.colors[2]);
+  cell
+    .append("rect")
+    .attr("width", quadW)
+    .attr("height", quadH)
+    .attr("x", quadW)
+    .attr("y", quadH)
+    .attr("fill", (d) => d.colors[3]);
+
+  cell
+    .append("rect")
+    .attr("class", "matrix-border")
+    .attr("width", x.bandwidth())
+    .attr("height", y.bandwidth())
+    .attr("rx", 6)
+    .attr("fill", "transparent")
+    .attr("stroke", (d) => {
+      const regionActive = state.selectedRegions.has(d.region);
+      const genreActive = state.selectedGenres.has(d.genre);
+      if (regionActive && genreActive) return "#4ee1a0";
+      if (regionActive || genreActive) return "rgba(78, 225, 160, 0.5)";
+      return "rgba(255,255,255,0.08)";
+    })
+    .attr("stroke-width", (d) => {
+      const regionActive = state.selectedRegions.has(d.region);
+      const genreActive = state.selectedGenres.has(d.genre);
+      if (regionActive && genreActive) return 2;
+      if (regionActive || genreActive) return 1.2;
+      return 1;
+    });
+
+  cell
+    .on("click", (_, d) => {
+      if (!state.selectedRegions.has(d.region)) {
+        state.selectedRegions.add(d.region);
+      }
+      if (!state.selectedGenres.has(d.genre)) {
+        state.selectedGenres.add(d.genre);
+      }
+      applyFilters();
+    })
+    .style("cursor", "pointer");
+
+  cell
+    .append("text")
+    .attr("x", x.bandwidth() / 2)
+    .attr("y", y.bandwidth() / 2 + 4)
+    .attr("text-anchor", "middle")
+    .text((d) => d.count || "");
+}
+
+function renderSearchResult(query) {
+  const source = state.data;
   if (!searchResult) return;
   const q = (query || "").trim().toLowerCase();
   if (!q) {
@@ -540,6 +970,24 @@ function renderBarcode(avgColors, containerSelector) {
   });
 
   container.appendChild(canvas);
+}
+
+function renderColorSwatches(colorData, containerSelector) {
+  const swatchContainer = document.querySelector(containerSelector);
+  if (!swatchContainer || !colorData || !Array.isArray(colorData.four_opposites)) {
+    return;
+  }
+  swatchContainer.innerHTML = "";
+  colorData.four_opposites.forEach((rgb) => {
+    const swatch = document.createElement("div");
+    swatch.className = "swatch";
+    const r = Math.round(rgb[0]);
+    const g = Math.round(rgb[1]);
+    const b = Math.round(rgb[2]);
+    swatch.style.background = `rgb(${r}, ${g}, ${b})`;
+    swatch.title = `RGB(${r}, ${g}, ${b})`;
+    swatchContainer.appendChild(swatch);
+  });
 }
 
 function renderMovieGlyph(movie, containerSelector) {
@@ -683,6 +1131,87 @@ function renderMovieGlyph(movie, containerSelector) {
   });
 }
 
+function renderDeepDiveGlyph(movie, containerSelector) {
+  const container = d3.select(containerSelector);
+  container.selectAll("*").remove();
+
+  if (!movie.rating && !movie.budget && !movie.revenue && !movie.viewership) {
+    container.append("p").attr("class", "muted").text("Metrics not available");
+    return;
+  }
+
+  const width = 300;
+  const height = 260;
+  const svg = container.append("svg")
+    .attr("width", "100%")
+    .attr("height", height)
+    .attr("viewBox", `0 0 ${width} ${height}`)
+    .attr("preserveAspectRatio", "xMidYMid meet");
+
+  const metrics = [
+    { key: "rating", label: "Rating", value: movie.rating || 0, max: 10 },
+    { key: "budget", label: "Budget", value: movie.budget || 0, max: 300_000_000 },
+    { key: "revenue", label: "Revenue", value: movie.revenue || 0, max: 1_000_000_000 },
+    { key: "viewership", label: "Viewers", value: movie.viewership || 0, max: 100_000_000 }
+  ];
+
+  const centerX = width / 2;
+  const centerY = 120;
+  const radius = 85;
+  const levels = 4;
+  const angleStep = (Math.PI * 2) / metrics.length;
+
+  for (let i = 1; i <= levels; i += 1) {
+    svg.append("circle")
+      .attr("cx", centerX)
+      .attr("cy", centerY)
+      .attr("r", (radius / levels) * i)
+      .attr("fill", "none")
+      .attr("stroke", "rgba(255,255,255,0.08)");
+  }
+
+  metrics.forEach((m, i) => {
+    const angle = -Math.PI / 2 + i * angleStep;
+    const x = centerX + Math.cos(angle) * radius;
+    const y = centerY + Math.sin(angle) * radius;
+    svg.append("line")
+      .attr("x1", centerX)
+      .attr("y1", centerY)
+      .attr("x2", x)
+      .attr("y2", y)
+      .attr("stroke", "rgba(255,255,255,0.1)");
+    svg.append("text")
+      .attr("x", centerX + Math.cos(angle) * (radius + 14))
+      .attr("y", centerY + Math.sin(angle) * (radius + 14))
+      .attr("text-anchor", "middle")
+      .attr("dominant-baseline", "middle")
+      .attr("fill", "#b7c7e6")
+      .attr("font-size", "11px")
+      .text(m.label);
+  });
+
+  const radial = d3.lineRadial()
+    .angle((d, i) => -Math.PI / 2 + i * angleStep)
+    .radius((d) => (radius * Math.min(d.value / d.max, 1)))
+    .curve(d3.curveLinearClosed);
+
+  svg.append("path")
+    .datum(metrics)
+    .attr("transform", `translate(${centerX},${centerY})`)
+    .attr("d", radial)
+    .attr("fill", "rgba(78, 225, 160, 0.25)")
+    .attr("stroke", "#4ee1a0")
+    .attr("stroke-width", 2);
+
+  svg.append("text")
+    .attr("x", centerX)
+    .attr("y", height - 12)
+    .attr("text-anchor", "middle")
+    .attr("fill", "#8aa0c2")
+    .attr("font-size", "11px")
+    .text("Rating • Budget • Revenue • Viewers");
+}
+
 function showSearchDetails(match) {
   if (!searchResult) return;
   state.selected = match;
@@ -736,19 +1265,7 @@ function showSearchDetails(match) {
 
     // Render 4 color swatches from four_opposites
     if (colorData.four_opposites && colorData.four_opposites.length > 0) {
-      const swatchContainer = document.querySelector('#color-swatch-container');
-      if (swatchContainer) {
-        colorData.four_opposites.forEach(rgb => {
-          const swatch = document.createElement('div');
-          swatch.className = 'swatch';
-          const r = Math.round(rgb[0]);
-          const g = Math.round(rgb[1]);
-          const b = Math.round(rgb[2]);
-          swatch.style.background = `rgb(${r}, ${g}, ${b})`;
-          swatch.title = `RGB(${r}, ${g}, ${b})`;
-          swatchContainer.appendChild(swatch);
-        });
-      }
+      renderColorSwatches(colorData, "#color-swatch-container");
     }
   } else {
     // No barcode data available for this movie
@@ -760,6 +1277,232 @@ function showSearchDetails(match) {
 
   // Render glyph (always render, even if some metrics are missing)
   renderMovieGlyph(match, '#movie-glyph-container');
+}
+
+function renderDeepDiveSelection() {
+  const container = document.querySelector("#deepdive-grid");
+  const combined = document.querySelector("#deepdive-combined");
+  if (!container) return;
+  container.innerHTML = "";
+  if (combined) combined.innerHTML = "";
+
+  if (!state.deepDive.length) {
+    if (combined) {
+      combined.innerHTML = `<p class="muted">Select up to 3 movies to compare the combined glyph.</p>`;
+    }
+    container.innerHTML = `<p class="muted">No movies selected yet. Click a dot to explore.</p>`;
+    return;
+  }
+
+  const picks = state.deepDive
+    .map((id) => state.data.find((d) => String(d.id) === String(id)))
+    .filter(Boolean)
+    .slice(0, 3)
+    .map((movie) => ({
+      ...movie,
+      _metrics: {
+        rating: parseMetric(movie.rating),
+        budget: parseMetric(movie.budget),
+        revenue: parseMetric(movie.revenue),
+        viewership: parseMetric(movie.viewership)
+      }
+    }));
+
+  if (!picks.length) {
+    if (combined) {
+      combined.innerHTML = `<p class="muted">Selections are unavailable with current data.</p>`;
+    }
+    container.innerHTML = `<p class="muted">Selections are unavailable with current data.</p>`;
+    return;
+  }
+
+  if (combined) {
+    renderDeepDiveCombinedGlyph(picks);
+  }
+
+  picks.forEach((movie) => {
+    const safeId = String(movie.id);
+    const card = document.createElement("div");
+    card.className = "deepdive-card";
+    const colorData = state.barcodeColors[movie.title];
+    const avgColor = colorData && Array.isArray(colorData.overall_avg) ? colorData.overall_avg : null;
+    const avgColorStyle = avgColor
+      ? `background: rgb(${Math.round(avgColor[0])}, ${Math.round(avgColor[1])}, ${Math.round(avgColor[2])});`
+      : "background: #2b3344;";
+    const avgColorLabel = avgColor
+      ? `Avg color: rgb(${Math.round(avgColor[0])}, ${Math.round(avgColor[1])}, ${Math.round(avgColor[2])})`
+      : "Avg color: —";
+    const ratingVal = movie._metrics.rating;
+    const viewersVal = movie._metrics.viewership;
+    const budgetVal = movie._metrics.budget;
+    const revenueVal = movie._metrics.revenue;
+    const statsLine = [
+      ratingVal ? `Rating ${ratingVal.toFixed(1)}` : null,
+      viewersVal ? `Viewers ${viewersVal.toLocaleString()}` : null,
+      budgetVal ? `Budget $${(budgetVal / 1_000_000).toFixed(0)}M` : null,
+      revenueVal ? `Revenue $${(revenueVal / 1_000_000).toFixed(0)}M` : null
+    ].filter(Boolean).join(" • ");
+
+    card.innerHTML = `
+      <div class="deepdive-header">
+        <div>
+          <h5>${movie.title}</h5>
+          <p class="muted">${movie.release_year || "—"} • ${(movie.genres || []).join(", ") || "—"}</p>
+          <p class="muted">${statsLine || "Details unavailable"}</p>
+        </div>
+        <button data-id="${safeId}" class="ghost remove-btn" type="button">Remove</button>
+      </div>
+      <div class="barcode-section">
+        <h4>Color Barcode</h4>
+        <div id="deepdive-barcode-${safeId}" class="barcode-container"></div>
+      <div class="color-swatches">
+        <span class="label">Dominant Colors:</span>
+        <div id="deepdive-swatches-${safeId}" class="swatch-grid"></div>
+      </div>
+      <div class="color-swatches">
+        <span class="label">Avg Color:</span>
+        <div class="swatch-grid">
+          <div class="swatch" style="${avgColorStyle}" title="${avgColorLabel}"></div>
+        </div>
+      </div>
+      </div>
+    `;
+    container.appendChild(card);
+
+    if (colorData && colorData.avg_colors && colorData.avg_colors.length > 0) {
+      renderBarcode(colorData.avg_colors, `#deepdive-barcode-${safeId}`);
+      renderColorSwatches(colorData, `#deepdive-swatches-${safeId}`);
+    } else {
+      const barcodeContainer = document.querySelector(`#deepdive-barcode-${safeId}`);
+      if (barcodeContainer) {
+        barcodeContainer.innerHTML = '<p class="muted">Barcode not available for this movie</p>';
+      }
+    }
+  });
+
+  container.querySelectorAll(".remove-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-id");
+      state.deepDive = state.deepDive.filter((d) => String(d) !== String(id));
+      renderDeepDiveSelection();
+      renderScatter(state.filtered);
+    });
+  });
+}
+
+function renderDeepDiveCombinedGlyph(movies) {
+  const container = document.querySelector("#deepdive-combined");
+  if (!container) return;
+  container.innerHTML = "";
+
+  const activeIds = new Set(movies.map((m) => String(m.id)));
+  state.deepDiveHidden = new Set(
+    Array.from(state.deepDiveHidden).filter((id) => activeIds.has(String(id)))
+  );
+
+  const legend = document.createElement("div");
+  legend.className = "deepdive-legend";
+  container.appendChild(legend);
+
+  const colors = d3.schemeTableau10;
+  const colorFor = (idx) => colors[idx % colors.length];
+
+  movies.forEach((movie, idx) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    const isHidden = state.deepDiveHidden.has(String(movie.id));
+    btn.className = isHidden ? "" : "active";
+    btn.innerHTML = `<span class="swatch" style="background:${colorFor(idx)}"></span>${movie.title}`;
+    btn.addEventListener("click", () => {
+      const id = String(movie.id);
+      if (state.deepDiveHidden.has(id)) {
+        state.deepDiveHidden.delete(id);
+      } else {
+        state.deepDiveHidden.add(id);
+      }
+      renderDeepDiveCombinedGlyph(movies);
+    });
+    legend.appendChild(btn);
+  });
+
+  const width = container.clientWidth || 460;
+  const height = 320;
+  const svg = d3.select(container).append("svg")
+    .attr("width", "100%")
+    .attr("height", height)
+    .attr("viewBox", `0 0 ${width} ${height}`)
+    .attr("preserveAspectRatio", "xMidYMid meet");
+
+  const metricMax = (key, fallback, scale = 1.05) => {
+    const vals = movies
+      .map((m) => (m._metrics ? m._metrics[key] : parseMetric(m[key])))
+      .filter((v) => v > 0);
+    if (!vals.length) return fallback;
+    return Math.max(...vals) * scale;
+  };
+  const metrics = [
+    { key: "rating", label: "Rating", max: 10 },
+    { key: "budget", label: "Budget", max: metricMax("budget", 300_000_000, 1.05) },
+    { key: "revenue", label: "Revenue", max: metricMax("revenue", 1_000_000_000, 2.5) },
+    { key: "viewership", label: "Viewers", max: metricMax("viewership", 100_000_000, 1.05) }
+  ];
+
+  const centerX = width / 2;
+  const centerY = height / 2 + 10;
+  const radius = Math.min(width, height) * 0.32;
+  const levels = 4;
+  const angleStep = (Math.PI * 2) / metrics.length;
+
+  for (let i = 1; i <= levels; i += 1) {
+    svg.append("circle")
+      .attr("cx", centerX)
+      .attr("cy", centerY)
+      .attr("r", (radius / levels) * i)
+      .attr("fill", "none")
+      .attr("stroke", "rgba(255,255,255,0.08)");
+  }
+
+  metrics.forEach((m, i) => {
+    const angle = -Math.PI / 2 + i * angleStep;
+    const x = centerX + Math.cos(angle) * radius;
+    const y = centerY + Math.sin(angle) * radius;
+    svg.append("line")
+      .attr("x1", centerX)
+      .attr("y1", centerY)
+      .attr("x2", x)
+      .attr("y2", y)
+      .attr("stroke", "rgba(255,255,255,0.1)");
+    svg.append("text")
+      .attr("x", centerX + Math.cos(angle) * (radius + 16))
+      .attr("y", centerY + Math.sin(angle) * (radius + 16))
+      .attr("text-anchor", "middle")
+      .attr("dominant-baseline", "middle")
+      .attr("fill", "#b7c7e6")
+      .attr("font-size", "12px")
+      .text(m.label);
+  });
+
+  const radial = d3.lineRadial()
+    .angle((_, i) => -Math.PI / 2 + i * angleStep)
+    .curve(d3.curveLinearClosed);
+
+  movies.forEach((movie, idx) => {
+    const id = String(movie.id);
+    if (state.deepDiveHidden.has(id)) return;
+    const values = metrics.map((m) => ({
+      value: movie._metrics ? movie._metrics[m.key] : parseMetric(movie[m.key]),
+      max: m.max
+    }));
+
+    const path = radial.radius((d) => radius * Math.min(d.value / d.max, 1))(values);
+    svg.append("path")
+      .attr("transform", `translate(${centerX},${centerY})`)
+      .attr("d", path)
+      .attr("fill", colorFor(idx))
+      .attr("fill-opacity", 0.18)
+      .attr("stroke", colorFor(idx))
+      .attr("stroke-width", 2);
+  });
 }
 
 function renderCompare() {
@@ -841,10 +1584,8 @@ async function init() {
     populateFilters(state.data);
     applyFilters();
     window.addEventListener("resize", () => render());
-    regionFilter.addEventListener("change", applyFilters);
-    genreFilter.addEventListener("change", applyFilters);
-    yearMinInput.addEventListener("change", applyFilters);
-    yearMaxInput.addEventListener("change", applyFilters);
+    if (regionFilter) regionFilter.addEventListener("change", applyFilters);
+    if (genreFilter) genreFilter.addEventListener("change", applyFilters);
     searchInput.addEventListener("input", (e) => renderSearchResult(e.target.value));
     console.log("[init] buttons present", {
       compareAdd: !!compareAddBtn,
@@ -885,15 +1626,30 @@ async function init() {
         render();
       });
     }
-    resetBtn.addEventListener("click", () => {
-      regionFilter.value = "";
-      genreFilter.value = "";
-      yearMinInput.value = state.years.min;
-      yearMaxInput.value = state.years.max;
-      searchInput.value = "";
-      applyFilters();
-      renderSearchResult("");
-    });
+    if (deepDiveClearBtn) {
+      deepDiveClearBtn.addEventListener("click", () => {
+        state.deepDive = [];
+        renderDeepDiveSelection();
+        renderScatter(state.filtered);
+      });
+    }
+    if (matrixResetBtn) {
+      matrixResetBtn.addEventListener("click", () => {
+        state.selectedRegions.clear();
+        state.selectedGenres.clear();
+        applyFilters();
+      });
+    }
+    if (resetBtn) {
+      resetBtn.addEventListener("click", () => {
+        if (regionFilter) regionFilter.value = "";
+        if (genreFilter) genreFilter.value = "";
+        state.timelineSelection = { min: state.years.min, max: state.years.max };
+        searchInput.value = "";
+        applyFilters();
+        renderSearchResult("");
+      });
+    }
   } catch (err) {
     console.error(err);
     const main = document.querySelector("main");
