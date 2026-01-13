@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(copy:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(tree:*)",
+      "Bash(wc:*)",
+      "Bash(python3:*)",
+      "Bash(dir:*)"
     ]
   }
 }

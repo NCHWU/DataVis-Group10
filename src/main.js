@@ -72,33 +72,45 @@ async function loadBarcodeColors() {
 
   for (const path of candidates) {
     try {
+      console.log(`Attempting to load barcode colors from ${path}...`);
       const res = await fetch(path);
       if (!res.ok) {
         console.warn(`Fetch failed for ${path}: ${res.status}`);
         continue;
       }
-      const data = await res.json();
+
+      console.log(`Fetched ${path}, parsing JSON...`);
+      const text = await res.text();
+      console.log(`Downloaded ${(text.length / 1024 / 1024).toFixed(2)} MB of text data`);
+
+      const data = JSON.parse(text);
+      console.log(`Parsed JSON successfully, array length: ${Array.isArray(data) ? data.length : 'NOT AN ARRAY'}`);
+
       if (!Array.isArray(data)) {
-        console.warn(`Invalid format in ${path}`);
+        console.warn(`Invalid format in ${path} - not an array`);
         continue;
       }
 
       // Convert array to lookup object by title
       const lookup = {};
-      data.forEach(movie => {
+      data.forEach((movie, idx) => {
         if (movie.title) {
           lookup[movie.title] = {
             avg_colors: movie.avg_colors || [],
             overall_avg: movie.overall_avg || [0, 0, 0],
             four_opposites: movie.four_opposites || []
           };
+        } else {
+          if (idx < 5) console.warn(`Movie at index ${idx} has no title`);
         }
       });
 
-      console.log(`Loaded barcode colors for ${Object.keys(lookup).length} movies from ${path}`);
+      console.log(`Successfully loaded barcode colors for ${Object.keys(lookup).length} movies from ${path}`);
+      console.log(`Sample titles:`, Object.keys(lookup).slice(0, 5));
       return lookup;
     } catch (err) {
-      console.warn(`Unable to load ${path}`, err);
+      console.error(`Error loading ${path}:`, err);
+      console.error(`Error details:`, err.message);
     }
   }
 
@@ -990,6 +1002,65 @@ function renderColorSwatches(colorData, containerSelector) {
   });
 }
 
+function renderColorCircle(colorData, svgSelector) {
+  const svg = document.querySelector(svgSelector);
+  if (!svg || !colorData || !Array.isArray(colorData.four_opposites) || colorData.four_opposites.length < 4) {
+    return;
+  }
+
+  const colors = colorData.four_opposites.map(rgb =>
+    `rgb(${Math.round(rgb[0])}, ${Math.round(rgb[1])}, ${Math.round(rgb[2])})`
+  );
+
+  // Create four arc pieces around the center circle
+  // Each piece is a 90-degree arc positioned around the circle
+  const centerX = 60;
+  const centerY = 60;
+  const innerRadius = 28; // Just outside the center circle (r=25)
+  const outerRadius = 50;
+
+  // Function to create SVG path for an arc piece
+  const createArcPath = (startAngle, endAngle, innerR, outerR) => {
+    const startAngleRad = (startAngle - 90) * Math.PI / 180;
+    const endAngleRad = (endAngle - 90) * Math.PI / 180;
+
+    const x1 = centerX + innerR * Math.cos(startAngleRad);
+    const y1 = centerY + innerR * Math.sin(startAngleRad);
+    const x2 = centerX + outerR * Math.cos(startAngleRad);
+    const y2 = centerY + outerR * Math.sin(startAngleRad);
+    const x3 = centerX + outerR * Math.cos(endAngleRad);
+    const y3 = centerY + outerR * Math.sin(endAngleRad);
+    const x4 = centerX + innerR * Math.cos(endAngleRad);
+    const y4 = centerY + innerR * Math.sin(endAngleRad);
+
+    return `
+      M ${x1} ${y1}
+      L ${x2} ${y2}
+      A ${outerR} ${outerR} 0 0 1 ${x3} ${y3}
+      L ${x4} ${y4}
+      A ${innerR} ${innerR} 0 0 0 ${x1} ${y1}
+      Z
+    `;
+  };
+
+  // Create four arc pieces (top-right, bottom-right, bottom-left, top-left)
+  const angles = [
+    { start: 0, end: 90 },      // Top-right
+    { start: 90, end: 180 },    // Bottom-right
+    { start: 180, end: 270 },   // Bottom-left
+    { start: 270, end: 360 }    // Top-left
+  ];
+
+  angles.forEach((angle, i) => {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", createArcPath(angle.start, angle.end, innerRadius, outerRadius));
+    path.setAttribute("fill", colors[i]);
+    path.setAttribute("stroke", "rgba(255, 255, 255, 0.1)");
+    path.setAttribute("stroke-width", "1");
+    svg.appendChild(path);
+  });
+}
+
 function renderMovieGlyph(movie, containerSelector) {
   const container = d3.select(containerSelector);
   container.selectAll("*").remove();
@@ -1069,13 +1140,13 @@ function renderMovieGlyph(movie, containerSelector) {
     {
       label: "Budget",
       value: movie.budget || 0,
-      max: 300_000_000,
+      max: 400_000_000,
       format: (v) => v ? `$${(v / 1_000_000).toFixed(0)}M` : "—"
     },
     {
       label: "Revenue",
       value: movie.revenue || 0,
-      max: 1_000_000_000,
+      max: 3_000_000_000,
       format: (v) => v ? `$${(v / 1_000_000).toFixed(0)}M` : "—"
     },
     {
@@ -1344,34 +1415,47 @@ function renderDeepDiveSelection() {
     ].filter(Boolean).join(" • ");
 
     card.innerHTML = `
-      <div class="deepdive-header">
-        <div>
-          <h5>${movie.title}</h5>
-          <p class="muted">${movie.release_year || "—"} • ${(movie.genres || []).join(", ") || "—"}</p>
-          <p class="muted">${statsLine || "Details unavailable"}</p>
+      <div class="deepdive-row">
+        <!-- Column 1: Barcode -->
+        <div class="deepdive-col barcode-col">
+          <div id="deepdive-barcode-${safeId}" class="barcode-container-vertical"></div>
         </div>
-        <button data-id="${safeId}" class="ghost remove-btn" type="button">Remove</button>
-      </div>
-      <div class="barcode-section">
-        <h4>Color Barcode</h4>
-        <div id="deepdive-barcode-${safeId}" class="barcode-container"></div>
-      <div class="color-swatches">
-        <span class="label">Dominant Colors:</span>
-        <div id="deepdive-swatches-${safeId}" class="swatch-grid"></div>
-      </div>
-      <div class="color-swatches">
-        <span class="label">Avg Color:</span>
-        <div class="swatch-grid">
-          <div class="swatch" style="${avgColorStyle}" title="${avgColorLabel}"></div>
+
+        <!-- Column 2: Color Circle -->
+        <div class="deepdive-col circle-col">
+          <div class="color-circle-container">
+            <svg id="deepdive-color-circle-${safeId}" class="color-circle" viewBox="0 0 120 120" width="120" height="120">
+              <!-- Center circle for overall average color -->
+              <circle cx="60" cy="60" r="25" fill="${avgColor ? `rgb(${Math.round(avgColor[0])}, ${Math.round(avgColor[1])}, ${Math.round(avgColor[2])})` : '#2b3344'}" />
+              <!-- Four quadrant pieces will be added via JS -->
+            </svg>
+          </div>
         </div>
-      </div>
+
+        <!-- Column 3: Metadata -->
+        <div class="deepdive-col metadata-col">
+          <div class="deepdive-info">
+            <div class="deepdive-title-row">
+              <h5>${movie.title}</h5>
+              <button data-id="${safeId}" class="ghost remove-btn" type="button">Remove</button>
+            </div>
+            <p class="muted movie-subtitle">${movie.release_year || "—"} • ${(movie.genres || []).join(", ") || "—"}</p>
+            <div class="movie-metadata">
+              <p><strong>Rating:</strong> ${ratingVal ? ratingVal.toFixed(1) : "—"}</p>
+              <p><strong>Budget:</strong> ${budgetVal ? `$${(budgetVal / 1_000_000).toFixed(1)}M` : "—"}</p>
+              <p><strong>Revenue:</strong> ${revenueVal ? `$${(revenueVal / 1_000_000).toFixed(1)}M` : "—"}</p>
+              <p><strong>Viewership:</strong> ${viewersVal ? viewersVal.toLocaleString() : "—"}</p>
+              <p><strong>Actors:</strong> ${(movie.actor_name || []).slice(0, 3).join(", ") || "—"}</p>
+            </div>
+          </div>
+        </div>
       </div>
     `;
     container.appendChild(card);
 
     if (colorData && colorData.avg_colors && colorData.avg_colors.length > 0) {
       renderBarcode(colorData.avg_colors, `#deepdive-barcode-${safeId}`);
-      renderColorSwatches(colorData, `#deepdive-swatches-${safeId}`);
+      renderColorCircle(colorData, `#deepdive-color-circle-${safeId}`);
     } else {
       const barcodeContainer = document.querySelector(`#deepdive-barcode-${safeId}`);
       if (barcodeContainer) {
@@ -1394,6 +1478,7 @@ function renderDeepDiveCombinedGlyph(movies) {
   const container = document.querySelector("#deepdive-combined");
   if (!container) return;
   container.innerHTML = "";
+
 
   const activeIds = new Set(movies.map((m) => String(m.id)));
   state.deepDiveHidden = new Set(
@@ -1434,17 +1519,32 @@ function renderDeepDiveCombinedGlyph(movies) {
     .attr("preserveAspectRatio", "xMidYMid meet");
 
   const metricMax = (key, fallback, scale = 1.05) => {
+    console.log(`\nCalculating max for ${key}:`);
     const vals = movies
-      .map((m) => (m._metrics ? m._metrics[key] : parseMetric(m[key])))
+      .map((m) => {
+        const value = m._metrics ? m._metrics[key] : parseMetric(m[key]);
+        console.log(`  ${m.title}: raw=${m[key]}, _metrics=${m._metrics?.[key]}, using=${value}`);
+        return value;
+      })
       .filter((v) => v > 0);
+    console.log(`  Filtered values (>0):`, vals);
     if (!vals.length) return fallback;
-    return Math.max(...vals) * scale;
+    const max = Math.max(...vals) * scale;
+    console.log(`  Max: ${Math.max(...vals)} * ${scale} = ${max}`);
+    return max;
   };
+  const budgetMax = metricMax("budget", 400_000_000, 1.1);
+  const revenueMax = metricMax("revenue", 3_000_000_000, 1.1);
+  const viewershipMax = metricMax("viewership", 100_000_000, 1.1);
+
+  console.log("\n=== FINAL CALCULATED MAXES ===");
+  console.log("Budget:", budgetMax, "Revenue:", revenueMax, "Viewership:", viewershipMax);
+
   const metrics = [
     { key: "rating", label: "Rating", max: 10 },
-    { key: "budget", label: "Budget", max: metricMax("budget", 300_000_000, 1.05) },
-    { key: "revenue", label: "Revenue", max: metricMax("revenue", 1_000_000_000, 2.5) },
-    { key: "viewership", label: "Viewers", max: metricMax("viewership", 100_000_000, 1.05) }
+    { key: "budget", label: "Budget", max: budgetMax },
+    { key: "revenue", label: "Revenue", max: revenueMax },
+    { key: "viewership", label: "Viewers", max: viewershipMax }
   ];
 
   const centerX = width / 2;
@@ -1494,7 +1594,12 @@ function renderDeepDiveCombinedGlyph(movies) {
       max: m.max
     }));
 
-    const path = radial.radius((d) => radius * Math.min(d.value / d.max, 1))(values);
+    const path = radial.radius((d) => {
+      const normalized = Math.min(d.value / d.max, 1);
+      // Use minimum 5% radius to prevent polygon collapse when values are 0
+      const minRadius = 0.05;
+      return radius * Math.max(normalized, minRadius);
+    })(values);
     svg.append("path")
       .attr("transform", `translate(${centerX},${centerY})`)
       .attr("d", path)
