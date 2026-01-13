@@ -38,7 +38,7 @@
         <div class="timeline-header">
           <div>
             <h2 id="timeline-title">Timeline View</h2>
-            <p class="subhead">Average budget + rating over time — drag to select a year range</p>
+            <p class="subhead">Budget + rating over time — drag to select a year range</p>
           </div>
           <button id="timeline-reset" class="ghost" type="button">Reset timeline</button>
         </div>
@@ -78,9 +78,22 @@
               <ul id="search-suggestions"></ul>
             </div>
             <div class="deepdive-panel-grid">
-              <div id="deepdive-grid" class="compare-grid"></div>
-              <div id="deepdive-combined" class="deepdive-combined"></div>
-            </div>
+  <!-- The average glyph at the top or side -->
+  <!-- Left Column: Individual Movie Cards & Barcodes -->
+  <div class="deepdive-left-col">
+    <div id="deepdive-grid" class="compare-grid"></div>
+  </div>
+
+  <!-- Right Column: Star Charts (Average & Combined) -->
+  <div class="deepdive-right-col">
+    <div class="card star-plot-card">
+      <div id="deepdive-average"></div>
+    </div>
+    <div class="card star-plot-card">
+      <div id="deepdive-combined" class="deepdive-combined"></div>
+    </div>
+  </div>
+</div>
           </div>
         </div>
       </section>
