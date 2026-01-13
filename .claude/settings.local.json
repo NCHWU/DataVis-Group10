@@ -6,7 +6,14 @@
       "Bash(tree:*)",
       "Bash(wc:*)",
       "Bash(python3:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(git push:*)",
+      "Bash(git lfs track:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git lfs migrate:*)",
+      "Bash(git rm:*)",
+      "Bash(git filter-branch:*)"
     ]
   }
 }
