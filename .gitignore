@@ -12,3 +12,4 @@ __pycache__/
 node_modules/
 dist/
 bun.lockb
+public/data/movies_colors.json
