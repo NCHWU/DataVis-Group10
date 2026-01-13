@@ -17,12 +17,12 @@ const regionFilter = document.querySelector("#region-filter");
 const genreFilter = document.querySelector("#genre-filter");
 const resetBtn = document.querySelector("#reset-filters");
 const searchInput = document.querySelector("#search-title");
-const searchResult = document.querySelector("#search-result");
 const searchSuggestions = document.querySelector("#search-suggestions");
 const compareAddBtn = document.querySelector("#compare-add");
 const compareClearBtn = document.querySelector("#compare-clear");
 const deepDiveClearBtn = document.querySelector("#deepdive-clear");
 const matrixResetBtn = document.querySelector("#matrix-reset");
+const timelineResetBtn = document.querySelector("#timeline-reset");
 
 async function loadData() {
   const candidates = [
@@ -39,7 +39,7 @@ async function loadData() {
   ];
   for (const path of candidates) {
     try {
-      const res = await fetch(path);
+      const res = await fetch(path, { cache: "no-store" });
       if (!res.ok) {
         console.warn(`Fetch failed for ${path}: ${res.status}`);
         continue;
@@ -146,9 +146,7 @@ function applyFilters() {
 
   const source = baseDataForSelections();
   state.filtered = source.filter((d) => {
-    const matchesYear =
-      (!d.release_year && d.release_year !== 0) || (d.release_year >= minYear && d.release_year <= maxYear);
-    return matchesYear;
+    return matchesYearRange(d, minYear, maxYear);
   });
   const filteredIds = new Set(state.filtered.map((d) => String(d.id)));
   state.deepDive = state.deepDive.filter((id) => filteredIds.has(String(id)));
@@ -167,6 +165,10 @@ function baseDataForSelections() {
   });
 }
 
+function matchesYearRange(d, minYear, maxYear) {
+  return (!d.release_year && d.release_year !== 0) || (d.release_year >= minYear && d.release_year <= maxYear);
+}
+
 function regionLabel(d) {
   const reg = d.region && d.region !== "Other" && d.region !== "Unknown" ? d.region : null;
   const country = d.country && d.country !== "Unknown" ? d.country : null;
@@ -174,13 +176,20 @@ function regionLabel(d) {
 }
 
 function render() {
+  renderTitles();
+  const minYear = state.timelineSelection.min;
+  const maxYear = state.timelineSelection.max;
+  const matrixData = state.data.filter((d) => matchesYearRange(d, minYear, maxYear));
   renderSummary(state.filtered);
   renderTimeline(baseDataForSelections());
-  renderGenreRegionMatrix(state.data);
+  renderGenreRegionMatrix(matrixData);
   renderScatter(state.filtered);
-  renderSearchResult(searchInput.value, state.data);
+  renderSearchResult(searchInput.value);
   renderCompare();
   renderTopRated();
+  renderTopBudget();
+  renderTopRevenue();
+  renderTopViewership();
   renderDeepDiveSelection();
 }
 
@@ -209,11 +218,11 @@ function renderTitles() {
   const years = currentYearRangeLabel();
   const overviewTitle = document.querySelector("#global-title");
   if (overviewTitle) {
-    overviewTitle.textContent = `Global Overview — ${region} | ${genre} | ${years}`;
+    overviewTitle.textContent = "Manual Search";
   }
   const overviewSubhead = document.querySelector("#global-subhead");
   if (overviewSubhead) {
-    overviewSubhead.textContent = `Snapshot for ${genre.toLowerCase()} titles in ${region} (${years})`;
+    overviewSubhead.textContent = "Search and select a title for a focused, single-movie deep dive.";
   }
   const timelineTitle = document.querySelector("#timeline-title");
   if (timelineTitle) {
@@ -222,8 +231,8 @@ function renderTitles() {
 }
 
 function renderSummary(data) {
-  renderTitles();
   const container = document.querySelector("#summary-grid");
+  if (!container) return;
   container.innerHTML = "";
   if (!data.length) {
     container.innerHTML = "<p class=\"muted\">No data for current filters.</p>";
@@ -508,55 +517,17 @@ function renderScatter(data) {
     return;
   }
 
-  const genreKey = (d) => (d.genres && d.genres.length ? d.genres[0] : "Unknown");
   const filtered = data.filter((d) => d.budget > 0 && d.rating);
-  const genreValues = filtered.map((d) => genreKey(d));
-  const genres = Array.from(new Set(genreValues)).sort();
-  const color = d3.scaleOrdinal().domain(genres).range(d3.schemeTableau10);
-
-  if (!genres.length) {
-    container.append("div").text("No genres available for current filters.");
-    return;
-  }
-
-  const hasSelection = state.scatterGenres.size > 0;
-  const activeGenres = hasSelection ? new Set(state.scatterGenres) : null;
-
-  const visible = filtered.filter((d) => {
-    if (!hasSelection) return true;
-    return activeGenres.has(genreKey(d));
-  });
+  const visible = filtered;
 
   // Downsample if very dense to keep plot readable.
   const maxPoints = 800;
   const step = Math.max(1, Math.ceil(visible.length / maxPoints));
   const plotted = visible.filter((_, i) => i % step === 0);
 
-  // Legend
-  const legend = container.append("div").attr("class", "legend scatter-legend");
-  legend
-    .selectAll("button")
-    .data(genres, (d) => d)
-    .join("button")
-    .attr("type", "button")
-    .attr("class", (d) => {
-      if (!hasSelection) return "legend-item";
-      return activeGenres.has(d) ? "legend-item active" : "legend-item inactive";
-    })
-    .on("click", (_, genre) => {
-      if (state.scatterGenres.has(genre)) {
-        state.scatterGenres.delete(genre);
-      } else {
-        state.scatterGenres.add(genre);
-      }
-      renderScatter(data);
-    })
-    .html((d) => `<span class="swatch" style="background:${color(d)}"></span><span>${d}</span>`);
-
   const width = container.node().clientWidth || 600;
   const height = container.node().clientHeight || 320;
-  const legendHeight = legend.node().getBoundingClientRect().height || 0;
-  const svgHeight = Math.max(260, height - legendHeight - 8);
+  const svgHeight = Math.max(260, height - 8);
   const margin = { top: 20, right: 20, bottom: 40, left: 55 };
 
   const svg = container.append("svg").attr("width", width).attr("height", svgHeight);
@@ -567,17 +538,30 @@ function renderScatter(data) {
     .range([margin.left, width - margin.right]);
   const y = d3.scaleLinear().domain([0, 10]).range([svgHeight - margin.bottom, margin.top]);
 
-  svg
+  const xAxis = svg
     .append("g")
     .attr("class", "axis")
     .attr("transform", `translate(0,${svgHeight - margin.bottom})`)
     .call(d3.axisBottom(x).tickFormat((d) => `$${(d / 1_000_000).toFixed(0)}M`));
 
-  svg
+  const yAxis = svg
     .append("g")
     .attr("class", "axis")
     .attr("transform", `translate(${margin.left},0)`)
     .call(d3.axisLeft(y));
+
+  const clipId = `scatter-clip-${Math.random().toString(36).slice(2)}`;
+  svg.append("clipPath")
+    .attr("id", clipId)
+    .append("rect")
+    .attr("x", margin.left)
+    .attr("y", margin.top)
+    .attr("width", width - margin.left - margin.right)
+    .attr("height", svgHeight - margin.top - margin.bottom);
+
+  const plot = svg.append("g")
+    .attr("class", "scatter-plot")
+    .attr("clip-path", `url(#${clipId})`);
 
   const tooltip = container
     .append("div")
@@ -592,24 +576,28 @@ function renderScatter(data) {
 
   const selectedIds = new Set(state.deepDive.map((id) => String(id)));
 
-  svg
-    .append("g")
+  let zx = x;
+  let zy = y;
+
+  plot
     .selectAll("circle")
     .data(plotted)
     .join("circle")
-    .attr("cx", (d) => x(d.budget))
-    .attr("cy", (d) => y(d.rating))
+    .attr("cx", (d) => zx(d.budget))
+    .attr("cy", (d) => zy(d.rating))
     .attr("r", 5)
-    .attr("fill", (d) => color(genreKey(d)))
+    .attr("fill", (d) => averageMovieColor(d))
     .attr("fill-opacity", 0.7)
     .style("cursor", "pointer")
     .attr("stroke", (d) => (selectedIds.has(String(d.id)) ? "#fff" : "none"))
     .attr("stroke-width", (d) => (selectedIds.has(String(d.id)) ? 1.5 : 0))
     .on("mouseenter", (event, d) => {
+      const xPos = zx(d.budget);
+      const yPos = zy(d.rating);
       tooltip
         .style("opacity", 1)
-        .style("left", `${event.offsetX + 12}px`)
-        .style("top", `${event.offsetY}px`)
+        .style("left", `${xPos + 12}px`)
+        .style("top", `${yPos}px`)
         .html(
           `<strong>${d.title}</strong><br/>Budget: $${(d.budget / 1_000_000).toFixed(1)}M<br/>Rating: ${d.rating}`
         );
@@ -629,15 +617,27 @@ function renderScatter(data) {
     })
     .on("mouseleave", () => tooltip.style("opacity", 0));
 
-  const genreLabel = hasSelection
-    ? Array.from(activeGenres).sort().join(", ")
-    : "All genres";
-
   svg
     .append("text")
     .attr("x", margin.left)
     .attr("y", margin.top - 6)
-    .text(`Budget vs. rating — ${genreLabel}`);
+    .text("Budget vs. rating — avg movie color");
+
+  const zoom = d3.zoom()
+    .scaleExtent([1, 6])
+    .translateExtent([[margin.left, margin.top], [width - margin.right, svgHeight - margin.bottom]])
+    .extent([[margin.left, margin.top], [width - margin.right, svgHeight - margin.bottom]])
+    .on("zoom", (event) => {
+      zx = event.transform.rescaleX(x);
+      zy = event.transform.rescaleY(y);
+      xAxis.call(d3.axisBottom(zx).tickFormat((d) => `$${(d / 1_000_000).toFixed(0)}M`));
+      yAxis.call(d3.axisLeft(zy));
+      plot.selectAll("circle")
+        .attr("cx", (d) => zx(d.budget))
+        .attr("cy", (d) => zy(d.rating));
+    });
+
+  svg.call(zoom);
 }
 
 function parseMetric(value) {
@@ -661,6 +661,16 @@ function colorKey(rgb) {
 
 function adjustColor(rgb, factor) {
   return rgb.map((v) => clamp(Math.round(v * factor), 20, 240));
+}
+
+function averageMovieColor(movie) {
+  const fallback = "rgb(120, 140, 170)";
+  if (!movie || !movie.title) return fallback;
+  const colorData = state.barcodeColors[movie.title];
+  if (!colorData || !Array.isArray(colorData.overall_avg)) return fallback;
+  const rgb = colorData.overall_avg.map((v) => clamp(Math.round(v), 20, 235));
+  if (rgb.length < 3) return fallback;
+  return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
 }
 
 function kMeansColors(colors, k) {
@@ -916,35 +926,34 @@ function renderGenreRegionMatrix(data) {
 
 function renderSearchResult(query) {
   const source = state.data;
-  if (!searchResult) return;
+  if (!searchSuggestions) return;
   const q = (query || "").trim().toLowerCase();
   if (!q) {
-    searchResult.innerHTML = "Select a title to see details.";
-    if (searchSuggestions) searchSuggestions.innerHTML = "";
+    searchSuggestions.innerHTML = "";
     state.selected = null;
     return;
   }
   const matches = source.filter((d) => (d.title || "").toLowerCase().includes(q)).slice(0, 6);
-  if (searchSuggestions) {
-    searchSuggestions.innerHTML = matches
-      .map((m) => `<li data-id="${m.id}">${m.title} (${m.release_year || "—"})</li>`)
-      .join("");
-    searchSuggestions.querySelectorAll("li").forEach((li) => {
-      li.addEventListener("click", () => {
-        const id = li.getAttribute("data-id");
-        const picked = source.find((d) => String(d.id) === String(id));
-        if (picked) showSearchDetails(picked);
-      });
+  searchSuggestions.innerHTML = matches
+    .map((m) => `<li data-id="${m.id}">${m.title} (${m.release_year || "—"})</li>`)
+    .join("");
+  searchSuggestions.querySelectorAll("li").forEach((li) => {
+    li.addEventListener("click", () => {
+      const id = li.getAttribute("data-id");
+      const picked = source.find((d) => String(d.id) === String(id));
+      if (picked) {
+        state.selected = picked;
+        if (state.deepDive.length >= 3) {
+          return;
+        }
+        if (!state.deepDive.includes(picked.id)) {
+          state.deepDive.push(picked.id);
+          renderDeepDiveSelection();
+        }
+      }
     });
-  }
-  if (matches.length === 1) {
-    showSearchDetails(matches[0]);
-  } else if (matches.length > 1) {
-    state.selected = matches[0];
-    searchResult.innerHTML = `Multiple results for "${query}". Showing first match; pick a specific one above.`;
-    showSearchDetails(matches[0]);
-  } else {
-    searchResult.innerHTML = `No match for "${query}".`;
+  });
+  if (!matches.length) {
     state.selected = null;
   }
 }
@@ -1008,16 +1017,21 @@ function renderColorCircle(colorData, svgSelector) {
     return;
   }
 
+  svg.querySelectorAll(".color-arc").forEach((node) => node.remove());
+
   const colors = colorData.four_opposites.map(rgb =>
     `rgb(${Math.round(rgb[0])}, ${Math.round(rgb[1])}, ${Math.round(rgb[2])})`
   );
 
   // Create four arc pieces around the center circle
   // Each piece is a 90-degree arc positioned around the circle
-  const centerX = 60;
-  const centerY = 60;
-  const innerRadius = 28; // Just outside the center circle (r=25)
-  const outerRadius = 50;
+  const viewBox = svg.getAttribute("viewBox");
+  const [_, __, vbWidth, vbHeight] = viewBox ? viewBox.split(/\s+/).map(Number) : [0, 0, 120, 120];
+  const size = Math.min(vbWidth || 120, vbHeight || 120);
+  const centerX = (vbWidth || 120) / 2;
+  const centerY = (vbHeight || 120) / 2;
+  const innerRadius = size * 0.23;
+  const outerRadius = size * 0.42;
 
   // Function to create SVG path for an arc piece
   const createArcPath = (startAngle, endAngle, innerR, outerR) => {
@@ -1054,6 +1068,7 @@ function renderColorCircle(colorData, svgSelector) {
   angles.forEach((angle, i) => {
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("d", createArcPath(angle.start, angle.end, innerRadius, outerRadius));
+    path.setAttribute("class", "color-arc");
     path.setAttribute("fill", colors[i]);
     path.setAttribute("stroke", "rgba(255, 255, 255, 0.1)");
     path.setAttribute("stroke-width", "1");
@@ -1065,7 +1080,7 @@ function renderMovieGlyph(movie, containerSelector) {
   const container = d3.select(containerSelector);
   container.selectAll("*").remove();
 
-  if (!movie.rating && !movie.budget && !movie.revenue) {
+  if (!movie.rating && !movie.budget && !movie.revenue && !movie.viewership && !movie.numVotes) {
     container.append("p").attr("class", "muted").text("Metrics not available");
     return;
   }
@@ -1148,6 +1163,12 @@ function renderMovieGlyph(movie, containerSelector) {
       value: movie.revenue || 0,
       max: 3_000_000_000,
       format: (v) => v ? `$${(v / 1_000_000).toFixed(0)}M` : "—"
+    },
+    {
+      label: "Viewers",
+      value: movie.viewership || 0,
+      max: 100_000_000,
+      format: (v) => v ? `${(v / 1_000_000).toFixed(1)}M` : "—"
     },
     {
       label: "Votes",
@@ -1283,73 +1304,6 @@ function renderDeepDiveGlyph(movie, containerSelector) {
     .text("Rating • Budget • Revenue • Viewers");
 }
 
-function showSearchDetails(match) {
-  if (!searchResult) return;
-  state.selected = match;
-
-  // Build enhanced HTML structure with barcode and glyph containers
-  searchResult.innerHTML = `
-    <div class="movie-detail-view">
-      <div class="movie-header">
-        <h3>${match.title}</h3>
-        <p class="movie-meta">
-          <strong>Year:</strong> ${match.release_year || "—"} |
-          <strong>Region:</strong> ${regionLabel(match)}
-        </p>
-        <p class="movie-meta">
-          <strong>Genres:</strong> ${(match.genres || []).join(", ") || "—"}
-        </p>
-      </div>
-
-      <div class="barcode-section">
-        <h4>Color Barcode</h4>
-        <div id="barcode-canvas-container" class="barcode-container"></div>
-
-        <div class="color-swatches">
-          <span class="label">Dominant Colors:</span>
-          <div id="color-swatch-container" class="swatch-grid"></div>
-        </div>
-      </div>
-
-      <div class="glyph-section">
-        <h4>Movie Metrics</h4>
-        <div id="movie-glyph-container" class="glyph-container"></div>
-      </div>
-
-      <div class="movie-details">
-        <p><strong>Rating:</strong> ${match.rating ?? "—"}</p>
-        <p><strong>Budget:</strong> ${match.budget ? `$${(match.budget / 1_000_000).toFixed(1)}M` : "—"}</p>
-        <p><strong>Revenue:</strong> ${match.revenue ? `$${(match.revenue / 1_000_000).toFixed(1)}M` : "—"}</p>
-        <p><strong>Actors:</strong> ${(match.actor_name || []).join(", ") || "—"}</p>
-        <p><strong>Viewership:</strong> ${match.viewership ? match.viewership.toLocaleString() : "—"}</p>
-      </div>
-    </div>
-  `;
-
-  // Render barcode if color data available
-  const colorData = state.barcodeColors[match.title];
-  if (colorData) {
-    // Render barcode from avg_colors
-    if (colorData.avg_colors && colorData.avg_colors.length > 0) {
-      renderBarcode(colorData.avg_colors, '#barcode-canvas-container');
-    }
-
-    // Render 4 color swatches from four_opposites
-    if (colorData.four_opposites && colorData.four_opposites.length > 0) {
-      renderColorSwatches(colorData, "#color-swatch-container");
-    }
-  } else {
-    // No barcode data available for this movie
-    const barcodeContainer = document.querySelector('#barcode-canvas-container');
-    if (barcodeContainer) {
-      barcodeContainer.innerHTML = '<p class="muted">Barcode not available for this movie</p>';
-    }
-  }
-
-  // Render glyph (always render, even if some metrics are missing)
-  renderMovieGlyph(match, '#movie-glyph-container');
-}
-
 function renderDeepDiveSelection() {
   const container = document.querySelector("#deepdive-grid");
   const combined = document.querySelector("#deepdive-combined");
@@ -1407,6 +1361,8 @@ function renderDeepDiveSelection() {
     const viewersVal = movie._metrics.viewership;
     const budgetVal = movie._metrics.budget;
     const revenueVal = movie._metrics.revenue;
+    const trailerQuery = encodeURIComponent(`${movie.title} trailer`);
+    const trailerUrl = `https://www.youtube.com/results?search_query=${trailerQuery}`;
     const statsLine = [
       ratingVal ? `Rating ${ratingVal.toFixed(1)}` : null,
       viewersVal ? `Viewers ${viewersVal.toLocaleString()}` : null,
@@ -1421,23 +1377,15 @@ function renderDeepDiveSelection() {
           <div id="deepdive-barcode-${safeId}" class="barcode-container-vertical"></div>
         </div>
 
-        <!-- Column 2: Color Circle -->
-        <div class="deepdive-col circle-col">
-          <div class="color-circle-container">
-            <svg id="deepdive-color-circle-${safeId}" class="color-circle" viewBox="0 0 120 120" width="120" height="120">
-              <!-- Center circle for overall average color -->
-              <circle cx="60" cy="60" r="25" fill="${avgColor ? `rgb(${Math.round(avgColor[0])}, ${Math.round(avgColor[1])}, ${Math.round(avgColor[2])})` : '#2b3344'}" />
-              <!-- Four quadrant pieces will be added via JS -->
-            </svg>
-          </div>
-        </div>
-
-        <!-- Column 3: Metadata -->
+        <!-- Column 2: Metadata -->
         <div class="deepdive-col metadata-col">
           <div class="deepdive-info">
             <div class="deepdive-title-row">
-              <h5>${movie.title}</h5>
-              <button data-id="${safeId}" class="ghost remove-btn" type="button">Remove</button>
+              <div class="deepdive-title">
+                <h5>${movie.title}</h5>
+                <a class="ghost trailer-link" href="${trailerUrl}" target="_blank" rel="noopener">Watch trailer</a>
+              </div>
+              <button data-id="${safeId}" class="ghost remove-btn deepdive-remove" type="button" aria-label="Remove">×</button>
             </div>
             <p class="muted movie-subtitle">${movie.release_year || "—"} • ${(movie.genres || []).join(", ") || "—"}</p>
             <div class="movie-metadata">
@@ -1447,6 +1395,17 @@ function renderDeepDiveSelection() {
               <p><strong>Viewership:</strong> ${viewersVal ? viewersVal.toLocaleString() : "—"}</p>
               <p><strong>Actors:</strong> ${(movie.actor_name || []).slice(0, 3).join(", ") || "—"}</p>
             </div>
+          </div>
+        </div>
+
+        <!-- Column 3: Color Circle -->
+        <div class="deepdive-col circle-col">
+          <div class="color-circle-container">
+            <svg id="deepdive-color-circle-${safeId}" class="color-circle" viewBox="0 0 120 120" width="120" height="120">
+              <!-- Center circle for overall average color -->
+              <circle cx="60" cy="60" r="25" fill="${avgColor ? `rgb(${Math.round(avgColor[0])}, ${Math.round(avgColor[1])}, ${Math.round(avgColor[2])})` : '#2b3344'}" />
+              <!-- Four quadrant pieces will be added via JS -->
+            </svg>
           </div>
         </div>
       </div>
@@ -1582,31 +1541,42 @@ function renderDeepDiveCombinedGlyph(movies) {
       .text(m.label);
   });
 
-  const radial = d3.lineRadial()
-    .angle((_, i) => -Math.PI / 2 + i * angleStep)
-    .curve(d3.curveLinearClosed);
-
   movies.forEach((movie, idx) => {
     const id = String(movie.id);
     if (state.deepDiveHidden.has(id)) return;
-    const values = metrics.map((m) => ({
-      value: movie._metrics ? movie._metrics[m.key] : parseMetric(movie[m.key]),
-      max: m.max
-    }));
-
-    const path = radial.radius((d) => {
-      const normalized = Math.min(d.value / d.max, 1);
+    const points = metrics.map((m, i) => {
+      const value = movie._metrics ? movie._metrics[m.key] : parseMetric(movie[m.key]);
+      const normalized = Math.min(value / m.max, 1);
       // Use minimum 5% radius to prevent polygon collapse when values are 0
       const minRadius = 0.05;
-      return radius * Math.max(normalized, minRadius);
-    })(values);
+      return {
+        r: radius * Math.max(normalized, minRadius),
+        angle: -Math.PI / 2 + i * angleStep,
+      };
+    });
+    const coords = points.map((point) => ({
+      x: centerX + Math.cos(point.angle) * point.r,
+      y: centerY + Math.sin(point.angle) * point.r,
+    }));
+    const path = coords.length
+      ? `M ${coords[0].x} ${coords[0].y} ${coords.slice(1).map((c) => `L ${c.x} ${c.y}`).join(" ")} Z`
+      : "";
     svg.append("path")
-      .attr("transform", `translate(${centerX},${centerY})`)
       .attr("d", path)
       .attr("fill", colorFor(idx))
       .attr("fill-opacity", 0.18)
       .attr("stroke", colorFor(idx))
       .attr("stroke-width", 2);
+
+    coords.forEach((coord) => {
+      svg.append("circle")
+        .attr("cx", coord.x)
+        .attr("cy", coord.y)
+        .attr("r", 4)
+        .attr("fill", colorFor(idx))
+        .attr("stroke", "#0c0f1a")
+        .attr("stroke-width", 1);
+    });
   });
 }
 
@@ -1680,6 +1650,90 @@ function renderTopRated() {
   });
 }
 
+function renderTopRevenue() {
+  const container = document.querySelector("#top-revenue-list");
+  if (!container) return;
+  const source = state.filtered.length ? state.filtered : state.data;
+  const best = source
+    .filter((d) => Number.isFinite(d.revenue) && d.revenue > 0)
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 5);
+  if (!best.length) {
+    container.innerHTML = `<p class="muted">No revenue data for current filters.</p>`;
+    return;
+  }
+  container.innerHTML = "";
+  best.forEach((m, idx) => {
+    const el = document.createElement("div");
+    el.className = "compare-card";
+    el.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+        <h5>${idx + 1}. ${m.title}</h5>
+        <span class="pill">${m.release_year || "—"}</span>
+      </div>
+      <p><strong>Revenue:</strong> $${(m.revenue / 1_000_000).toFixed(1)}M</p>
+      <p><strong>Rating:</strong> ${m.rating ?? "—"} | <strong>Region:</strong> ${regionLabel(m)}</p>
+    `;
+    container.appendChild(el);
+  });
+}
+
+function renderTopBudget() {
+  const container = document.querySelector("#top-budget-list");
+  if (!container) return;
+  const source = state.filtered.length ? state.filtered : state.data;
+  const best = source
+    .filter((d) => Number.isFinite(d.budget) && d.budget > 0)
+    .sort((a, b) => b.budget - a.budget)
+    .slice(0, 5);
+  if (!best.length) {
+    container.innerHTML = `<p class="muted">No budget data for current filters.</p>`;
+    return;
+  }
+  container.innerHTML = "";
+  best.forEach((m, idx) => {
+    const el = document.createElement("div");
+    el.className = "compare-card";
+    el.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+        <h5>${idx + 1}. ${m.title}</h5>
+        <span class="pill">${m.release_year || "—"}</span>
+      </div>
+      <p><strong>Budget:</strong> $${(m.budget / 1_000_000).toFixed(1)}M</p>
+      <p><strong>Rating:</strong> ${m.rating ?? "—"} | <strong>Region:</strong> ${regionLabel(m)}</p>
+    `;
+    container.appendChild(el);
+  });
+}
+
+function renderTopViewership() {
+  const container = document.querySelector("#top-viewership-list");
+  if (!container) return;
+  const source = state.filtered.length ? state.filtered : state.data;
+  const best = source
+    .filter((d) => Number.isFinite(d.viewership) && d.viewership > 0)
+    .sort((a, b) => b.viewership - a.viewership)
+    .slice(0, 5);
+  if (!best.length) {
+    container.innerHTML = `<p class="muted">No viewership data for current filters.</p>`;
+    return;
+  }
+  container.innerHTML = "";
+  best.forEach((m, idx) => {
+    const el = document.createElement("div");
+    el.className = "compare-card";
+    el.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+        <h5>${idx + 1}. ${m.title}</h5>
+        <span class="pill">${m.release_year || "—"}</span>
+      </div>
+      <p><strong>Viewership:</strong> ${m.viewership.toLocaleString()}</p>
+      <p><strong>Rating:</strong> ${m.rating ?? "—"} | <strong>Region:</strong> ${regionLabel(m)}</p>
+    `;
+    container.appendChild(el);
+  });
+}
+
 async function init() {
   try {
     state.data = await loadData();
@@ -1704,23 +1758,29 @@ async function init() {
           const fallback = state.filtered.find((d) => (d.title || "").toLowerCase().includes(q));
           if (fallback) {
             state.selected = fallback;
-            showSearchDetails(fallback);
           } else {
-            searchResult.innerHTML = `<p class="muted">Type to search, then click a suggestion (or we’ll use the first match) before adding.</p>`;
             return;
           }
         }
         const id = state.selected.id;
+        if (state.deepDive.length >= 3 && !state.deepDive.includes(id)) {
+          return;
+        }
+        if (!state.deepDive.includes(id)) {
+          state.deepDive.push(id);
+          renderDeepDiveSelection();
+        }
         if (state.compare.includes(id)) {
           render();
           return;
         }
         if (state.compare.length >= 4) {
-          searchResult.innerHTML = `<p class="muted">You already have 4 movies in compare. Remove one first.</p>`;
+          if (searchStatus) {
+            searchStatus.textContent = "You already have 4 movies in compare. Remove one first.";
+          }
           return;
         }
         state.compare.push(id);
-        searchResult.innerHTML = `<p class="muted">Added "${state.selected.title}" to compare below.</p>`;
         render();
       });
     }
@@ -1736,6 +1796,12 @@ async function init() {
         state.deepDive = [];
         renderDeepDiveSelection();
         renderScatter(state.filtered);
+      });
+    }
+    if (timelineResetBtn) {
+      timelineResetBtn.addEventListener("click", () => {
+        state.timelineSelection = { min: state.years.min, max: state.years.max };
+        applyFilters();
       });
     }
     if (matrixResetBtn) {

@@ -18,43 +18,77 @@
       <div>
         <p class="eyebrow">Netflix • IMDB • Kaggle</p>
         <h1>MovieMaker Analytics Dashboard</h1>
-        <p class="lede">
-          Explore global and regional movie trends across viewership, budgets, and ratings. Start with the
-          overview, scrub through time, then dive into scatter and radar comparisons.
-        </p>
       </div>
-      <div class="badge">Live Prototype</div>
     </header>
 
     <main class="stack">
+      <section class="card wide intro">
+        <h2>How to use this dashboard</h2>
+        <p class="subhead">Start wide, narrow the time window, then dig into specific titles.</p>
+        <ol class="intro-steps">
+          <li>Use the timeline brush to set the year range you want to analyze.</li>
+          <li>Scan the color matrix to spot region/genre clusters and click to filter.</li>
+          <li>Open the deep dive to compare budgets vs. ratings and pick titles.</li>
+          <li>Review the global overview for summary stats and detailed title lookups.</li>
+        </ol>
+      </section>
+
+      <div class="split-grid">
+        <section class="card">
+        <div class="timeline-header">
+          <div>
+            <h2 id="timeline-title">Timeline View</h2>
+            <p class="subhead">Average budget + rating over time — drag to select a year range</p>
+          </div>
+          <button id="timeline-reset" class="ghost" type="button">Reset timeline</button>
+        </div>
+        <div id="timeline"></div>
+      </section>
+
+        <section class="card">
+          <h2>Genre × Region Color Matrix</h2>
+          <div class="matrix-header">
+            <p class="subhead">Average barcode color and title counts by genre and region</p>
+            <button id="matrix-reset" class="ghost" type="button">Reset matrix filters</button>
+          </div>
+          <div id="matrix"></div>
+        </section>
+      </div>
+
       <section class="card wide">
-        <h2 id="global-title">Global Overview</h2>
-        <p id="global-subhead" class="subhead">Snapshot by region and genre (map placeholder)</p>
-        <div id="summary-grid" class="summary-grid"></div>
-        <div class="placeholder">World map / region glyphs go here</div>
-        <div class="search-block">
-          <div class="search-header">
-            <div>
-              <h3>Specific movie title info</h3>
-              <p class="subhead">Search and pick a title to see stats.</p>
-            </div>
-            <input id="search-title" type="search" placeholder="Start typing a title..." />
-          </div>
-          <ul id="search-suggestions"></ul>
-          <div id="search-result" class="search-result placeholder">Select a title to see details.</div>
-          <div class="compare-actions">
-            <button id="compare-add" class="ghost" type="button">Add to compare (max 4)</button>
-            <button id="compare-clear" class="ghost" type="button">Clear compare</button>
-          </div>
-          <div id="compare-panel" class="compare-panel">
+        <h2>Deep Dive</h2>
+        <p class="subhead">Budget vs. rating scatter; brush to compare selections</p>
+        <div class="deepdive-layout">
+          <div id="scatter"></div>
+          <div id="deepdive-panel" class="compare-panel">
             <div class="compare-header">
-              <h4>Side-by-side compare (up to 4)</h4>
-              <p class="subhead">Add from the search box above.</p>
+              <div class="deepdive-header">
+                <h4>Deep Dive picks (up to 3)</h4>
+                <span class="muted">Click points in the scatter to add/remove selections, or manually add with the search bar.</span>
+              </div>
+              <button id="deepdive-clear" class="ghost" type="button">Clear picks</button>
             </div>
-            <div id="compare-grid" class="compare-grid">
-              <p class="muted">No movies selected. Pick a title and click “Add to compare”.</p>
+            <div class="search-block compact">
+              <div class="search-header">
+                <div>
+                  <h5>Search to add a pick</h5>
+                </div>
+                <input id="search-title" type="search" placeholder="Start typing a title..." />
+              </div>
+              <ul id="search-suggestions"></ul>
+            </div>
+            <div class="deepdive-panel-grid">
+              <div id="deepdive-grid" class="compare-grid"></div>
+              <div id="deepdive-combined" class="deepdive-combined"></div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section class="card wide">
+        <h2>FYI Highlights</h2>
+        <p class="subhead">Quick context on top performers within the current filters.</p>
+        <div class="split-grid">
           <div id="top-rated-panel" class="compare-panel">
             <div class="compare-header">
               <h4>Top 5 by rating</h4>
@@ -64,38 +98,35 @@
               <p class="muted">Loading top titles…</p>
             </div>
           </div>
-        </div>
-      </section>
-
-      <section class="card wide">
-        <h2 id="timeline-title">Timeline View</h2>
-        <p class="subhead">Average budget + rating over time — drag to select a year range</p>
-        <div id="timeline"></div>
-      </section>
-
-      <section class="card wide">
-        <h2>Genre × Region Color Matrix</h2>
-        <div class="matrix-header">
-          <p class="subhead">Average barcode color and title counts by genre and region</p>
-          <button id="matrix-reset" class="ghost" type="button">Reset matrix filters</button>
-        </div>
-        <div id="matrix"></div>
-      </section>
-
-      <section class="card wide">
-        <h2>Deep Dive</h2>
-        <p class="subhead">Budget vs. rating scatter; brush to compare selections</p>
-        <div id="scatter"></div>
-        <div id="deepdive-panel" class="compare-panel">
-          <div class="compare-header">
-            <div>
-              <h4>Deep Dive picks (up to 3)</h4>
-              <p class="subhead">Click points in the scatter to add/remove selections.</p>
+          <div id="top-revenue-panel" class="compare-panel">
+            <div class="compare-header">
+              <h4>Top 5 by revenue</h4>
+              <p class="subhead">Highest total revenue in the filter window</p>
             </div>
-            <button id="deepdive-clear" class="ghost" type="button">Clear picks</button>
+            <div id="top-revenue-list" class="compare-grid">
+              <p class="muted">Loading top titles…</p>
+            </div>
           </div>
-          <div id="deepdive-grid" class="compare-grid"></div>
-          <div id="deepdive-combined" class="deepdive-combined"></div>
+        </div>
+        <div class="split-grid">
+          <div id="top-budget-panel" class="compare-panel">
+            <div class="compare-header">
+              <h4>Top 5 by budget</h4>
+              <p class="subhead">Highest production budgets in the filter window</p>
+            </div>
+            <div id="top-budget-list" class="compare-grid">
+              <p class="muted">Loading top titles…</p>
+            </div>
+          </div>
+          <div id="top-viewership-panel" class="compare-panel">
+            <div class="compare-header">
+              <h4>Top 5 by viewership</h4>
+              <p class="subhead">Highest Netflix viewership in the filter window</p>
+            </div>
+            <div id="top-viewership-list" class="compare-grid">
+              <p class="muted">Loading top titles…</p>
+            </div>
+          </div>
         </div>
       </section>
     </main>

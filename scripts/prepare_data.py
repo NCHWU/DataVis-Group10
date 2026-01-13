@@ -97,8 +97,13 @@ def load_engagement() -> pd.DataFrame:
     duration_col = duration_cols[0] if duration_cols else None
     if hours_col is None:
         raise ValueError("engagement.csv must include an hours viewed column")
-    df["hours_viewed"] = pd.to_numeric(df[hours_col], errors="coerce")
-    df["duration_minutes"] = pd.to_numeric(df[duration_col], errors="coerce") if duration_col else pd.NA
+    hours_raw = df[hours_col].astype(str).str.replace(",", "", regex=False)
+    df["hours_viewed"] = pd.to_numeric(hours_raw, errors="coerce")
+    if duration_col:
+        duration_raw = df[duration_col].astype(str).str.replace(",", "", regex=False)
+        df["duration_minutes"] = pd.to_numeric(duration_raw, errors="coerce")
+    else:
+        df["duration_minutes"] = pd.NA
     if duration_col:
         df["viewership"] = df["hours_viewed"] / (df["duration_minutes"] / 60.0)
     else:
