@@ -574,11 +574,97 @@ function renderScatter(data) {
     .style("font-size", "12px")
     .style("opacity", 0);
 
-  const selectedIds = new Set(state.deepDive.map((id) => String(id)));
-
   let zx = x;
   let zy = y;
+  let currentZoomScale = 1;
+  let currentTransform = d3.zoomIdentity;
 
+  // Helper function to create arc path for quadrants
+  const createQuadrantArcPath = (centerX, centerY, startAngle, endAngle, innerR, outerR) => {
+    const startAngleRad = (startAngle - 90) * Math.PI / 180;
+    const endAngleRad = (endAngle - 90) * Math.PI / 180;
+
+    const x1 = centerX + innerR * Math.cos(startAngleRad);
+    const y1 = centerY + innerR * Math.sin(startAngleRad);
+    const x2 = centerX + outerR * Math.cos(startAngleRad);
+    const y2 = centerY + outerR * Math.sin(startAngleRad);
+    const x3 = centerX + outerR * Math.cos(endAngleRad);
+    const y3 = centerY + outerR * Math.sin(endAngleRad);
+    const x4 = centerX + innerR * Math.cos(endAngleRad);
+    const y4 = centerY + innerR * Math.sin(endAngleRad);
+
+    return `
+      M ${x1} ${y1}
+      L ${x2} ${y2}
+      A ${outerR} ${outerR} 0 0 1 ${x3} ${y3}
+      L ${x4} ${y4}
+      A ${innerR} ${innerR} 0 0 0 ${x1} ${y1}
+      Z
+    `;
+  };
+
+  // Function to update visualization based on zoom level
+  const updateVisualization = (zoomScale) => {
+    // Threshold: show quadrants when zoom is > 2.5x
+    const ZOOM_THRESHOLD = 2.5;
+    const showQuadrants = zoomScale >= ZOOM_THRESHOLD;
+
+    // Base size that scales with zoom - scale the center circle radius proportionally
+    const baseQuadrantSize = 12;
+    const quadrantRadius = baseQuadrantSize * zoomScale;
+    const innerRadius = quadrantRadius * 0.23;
+    const outerRadius = quadrantRadius * 0.42;
+    const centerCircleRadius = showQuadrants ? 3 * zoomScale : 5;
+
+    const angles = [
+      { start: 0, end: 90 },      // Top-right
+      { start: 90, end: 180 },    // Bottom-right
+      { start: 180, end: 270 },   // Bottom-left
+      { start: 270, end: 360 }    // Top-left
+    ];
+
+    // Remove existing quadrants
+    plot.selectAll(".quadrant-group").remove();
+
+    if (showQuadrants) {
+      // Create quadrant groups for each point
+      plotted.forEach((d) => {
+        const colorData = state.barcodeColors[d.title];
+        if (colorData && colorData.four_opposites && colorData.four_opposites.length >= 4) {
+          const colors = colorData.four_opposites.map(rgb =>
+            `rgb(${Math.round(rgb[0])}, ${Math.round(rgb[1])}, ${Math.round(rgb[2])})`
+          );
+
+          const quadrantGroup = plot.append("g")
+            .attr("class", "quadrant-group")
+            .attr("transform", `translate(${zx(d.budget)}, ${zy(d.rating)})`)
+            .style("pointer-events", "none");
+
+          angles.forEach((angle, i) => {
+            quadrantGroup.append("path")
+              .attr("d", createQuadrantArcPath(0, 0, angle.start, angle.end, innerRadius, outerRadius))
+              .attr("class", "color-arc")
+              .attr("fill", colors[i])
+              .attr("stroke", "rgba(255, 255, 255, 0.3)")
+              .attr("stroke-width", "0.5");
+          });
+        }
+      });
+    }
+
+    // Get current selected IDs (dynamic for re-renders)
+    const selectedIds = new Set(state.deepDive.map((id) => String(id)));
+
+    // Update circles with proper scaling
+    plot.selectAll("circle")
+      .attr("r", centerCircleRadius)
+      .attr("fill", (d) => showQuadrants ? "rgba(255,255,255,0.5)" : averageMovieColor(d))
+      .attr("fill-opacity", showQuadrants ? 0.9 : 0.7)
+      .attr("stroke", (d) => (selectedIds.has(String(d.id)) ? "#4ee1a0" : "none"))
+      .attr("stroke-width", (d) => (selectedIds.has(String(d.id)) ? 2 * zoomScale : 0));
+  };
+
+  // Initial render of circles
   plot
     .selectAll("circle")
     .data(plotted)
@@ -589,8 +675,8 @@ function renderScatter(data) {
     .attr("fill", (d) => averageMovieColor(d))
     .attr("fill-opacity", 0.7)
     .style("cursor", "pointer")
-    .attr("stroke", (d) => (selectedIds.has(String(d.id)) ? "#fff" : "none"))
-    .attr("stroke-width", (d) => (selectedIds.has(String(d.id)) ? 1.5 : 0))
+    .attr("stroke", (d) => (new Set(state.deepDive.map((id) => String(id))).has(String(d.id)) ? "#4ee1a0" : "none"))
+    .attr("stroke-width", (d) => (new Set(state.deepDive.map((id) => String(id))).has(String(d.id)) ? 2 : 0))
     .on("mouseenter", (event, d) => {
       const xPos = zx(d.budget);
       const yPos = zy(d.rating);
@@ -602,7 +688,8 @@ function renderScatter(data) {
           `<strong>${d.title}</strong><br/>Budget: $${(d.budget / 1_000_000).toFixed(1)}M<br/>Rating: ${d.rating}`
         );
     })
-    .on("click", (_, d) => {
+    .on("click", (event, d) => {
+      event.stopPropagation(); // Prevent event bubbling
       const id = d.id;
       const existing = state.deepDive.findIndex((m) => String(m) === String(id));
       if (existing >= 0) {
@@ -612,8 +699,10 @@ function renderScatter(data) {
       } else {
         return;
       }
-      renderScatter(data);
+      // Update only the deep dive panel, don't re-render scatter (preserves zoom)
       renderDeepDiveSelection();
+      // Update visualization to reflect new selection
+      updateVisualization(currentZoomScale);
     })
     .on("mouseleave", () => tooltip.style("opacity", 0));
 
@@ -621,7 +710,7 @@ function renderScatter(data) {
     .append("text")
     .attr("x", margin.left)
     .attr("y", margin.top - 6)
-    .text("Budget vs. rating — avg movie color");
+    .text("Budget vs. rating — zoom in to see color quadrants");
 
   const zoom = d3.zoom()
     .scaleExtent([1, 6])
@@ -630,11 +719,18 @@ function renderScatter(data) {
     .on("zoom", (event) => {
       zx = event.transform.rescaleX(x);
       zy = event.transform.rescaleY(y);
+      currentZoomScale = event.transform.k;
+      currentTransform = event.transform;
+
       xAxis.call(d3.axisBottom(zx).tickFormat((d) => `$${(d / 1_000_000).toFixed(0)}M`));
       yAxis.call(d3.axisLeft(zy));
+
       plot.selectAll("circle")
         .attr("cx", (d) => zx(d.budget))
         .attr("cy", (d) => zy(d.rating));
+
+      // Update quadrants with new positions and scale
+      updateVisualization(currentZoomScale);
     });
 
   svg.call(zoom);
