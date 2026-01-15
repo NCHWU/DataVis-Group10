@@ -753,6 +753,11 @@ function renderScatter(data) {
 
   svg.call(zoom);
 
+  // Prevent page scroll when mouse is over the scatter plot
+  svg.on("wheel", (event) => {
+    event.preventDefault();
+  });
+
   // Brush for drag-select (only activates with Ctrl key)
   const brush = d3.brush()
     .extent([[margin.left, margin.top], [width - margin.right, svgHeight - margin.bottom]])
