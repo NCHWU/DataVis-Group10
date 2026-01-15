@@ -408,13 +408,15 @@ function renderTimeline(data) {
     .append("text")
     .attr("y", margin.top - 18)
     .attr("text-anchor", "middle")
-    .attr("fill", "#4ee1a0");
+    .attr("fill", "rgba(255, 255, 255, 0.6)")
+    .attr("font-size", "12px");
 
   const endLabel = labelGroup
     .append("text")
     .attr("y", margin.top - 18)
     .attr("text-anchor", "middle")
-    .attr("fill", "#4ee1a0");
+    .attr("fill", "rgba(255, 255, 255, 0.6)")
+    .attr("font-size", "12px");
 
   const setRangeLabels = (minYear, maxYear) => {
     startLabel.attr("x", x(minYear)).text(minYear);
@@ -456,20 +458,19 @@ function renderTimeline(data) {
     .attr("class", "brush")
     .call(brush);
 
-  // Style brush
+  // Style brush - subtle appearance
   svg.selectAll(".brush .overlay")
     .style("cursor", "crosshair");
 
   svg.selectAll(".brush .selection")
-    .attr("fill", "#4ee1a0")
-    .attr("fill-opacity", 0.2)
-    .attr("stroke", "#4ee1a0")
+    .attr("fill", "rgba(255, 255, 255, 0.08)")
+    .attr("stroke", "rgba(255, 255, 255, 0.25)")
     .attr("stroke-width", 1);
 
   svg.selectAll(".brush .handle")
-    .attr("fill", "#4ee1a0")
-    .attr("stroke", "#0c0f1a")
-    .attr("stroke-width", 2);
+    .attr("fill", "rgba(255, 255, 255, 0.4)")
+    .attr("stroke", "rgba(0, 0, 0, 0.3)")
+    .attr("stroke-width", 1);
 
   // Initial brush position based on current selection
   if (state.timelineSelection.min !== state.years.min || state.timelineSelection.max !== state.years.max) {
@@ -526,8 +527,8 @@ function renderScatter(data) {
   const plotted = visible.filter((_, i) => i % step === 0);
 
   const width = container.node().clientWidth || 600;
-  const height = container.node().clientHeight || 320;
-  const svgHeight = Math.max(260, height - 8);
+  const height = container.node().clientHeight || 580;
+  const svgHeight = Math.max(500, height - 30);
   const margin = { top: 20, right: 20, bottom: 40, left: 55 };
 
   const svg = container.append("svg").attr("width", width).attr("height", svgHeight);
@@ -567,18 +568,107 @@ function renderScatter(data) {
     .append("div")
     .style("position", "absolute")
     .style("pointer-events", "none")
-    .style("background", "rgba(0,0,0,0.7)")
-    .style("padding", "0.4rem 0.5rem")
-    .style("border-radius", "8px")
+    .style("background", "rgba(15, 20, 35, 0.95)")
+    .style("padding", "0.5rem 0.7rem")
+    .style("border-radius", "10px")
+    .style("border", "1px solid rgba(255, 255, 255, 0.1)")
     .style("color", "#fff")
     .style("font-size", "12px")
-    .style("opacity", 0);
-
-  const selectedIds = new Set(state.deepDive.map((id) => String(id)));
+    .style("box-shadow", "0 8px 24px rgba(0, 0, 0, 0.4)")
+    .style("backdrop-filter", "blur(8px)")
+    .style("opacity", 0)
+    .style("transition", "opacity 0.15s ease");
 
   let zx = x;
   let zy = y;
+  let currentZoomScale = 1;
 
+  // Helper function to create arc path for quadrants
+  const createQuadrantArcPath = (centerX, centerY, startAngle, endAngle, innerR, outerR) => {
+    const startAngleRad = (startAngle - 90) * Math.PI / 180;
+    const endAngleRad = (endAngle - 90) * Math.PI / 180;
+
+    const x1 = centerX + innerR * Math.cos(startAngleRad);
+    const y1 = centerY + innerR * Math.sin(startAngleRad);
+    const x2 = centerX + outerR * Math.cos(startAngleRad);
+    const y2 = centerY + outerR * Math.sin(startAngleRad);
+    const x3 = centerX + outerR * Math.cos(endAngleRad);
+    const y3 = centerY + outerR * Math.sin(endAngleRad);
+    const x4 = centerX + innerR * Math.cos(endAngleRad);
+    const y4 = centerY + innerR * Math.sin(endAngleRad);
+
+    return `
+      M ${x1} ${y1}
+      L ${x2} ${y2}
+      A ${outerR} ${outerR} 0 0 1 ${x3} ${y3}
+      L ${x4} ${y4}
+      A ${innerR} ${innerR} 0 0 0 ${x1} ${y1}
+      Z
+    `;
+  };
+
+  // Function to update visualization based on zoom level
+  const updateVisualization = (zoomScale) => {
+    // Threshold: show quadrants when zoom is > 2.5x
+    const ZOOM_THRESHOLD = 2.5;
+    const showQuadrants = zoomScale >= ZOOM_THRESHOLD;
+
+    // Base size that scales with zoom - smaller glyphs to reduce overlap
+    const baseQuadrantSize = 8; // Reduced from 12
+    const quadrantRadius = baseQuadrantSize * zoomScale;
+    const innerRadius = quadrantRadius * 0.2;
+    const outerRadius = quadrantRadius * 0.38;
+    const centerCircleRadius = showQuadrants ? 2 * zoomScale : 5; // Smaller center
+
+    const angles = [
+      { start: 0, end: 90 },      // Top-right
+      { start: 90, end: 180 },    // Bottom-right
+      { start: 180, end: 270 },   // Bottom-left
+      { start: 270, end: 360 }    // Top-left
+    ];
+
+    // Remove existing quadrants
+    plot.selectAll(".quadrant-group").remove();
+
+    if (showQuadrants) {
+      // Create quadrant groups for each point with reduced opacity
+      plotted.forEach((d) => {
+        const colorData = state.barcodeColors[d.title];
+        if (colorData && colorData.four_opposites && colorData.four_opposites.length >= 4) {
+          const colors = colorData.four_opposites.map(rgb =>
+            `rgb(${Math.round(rgb[0])}, ${Math.round(rgb[1])}, ${Math.round(rgb[2])})`
+          );
+
+          const quadrantGroup = plot.append("g")
+            .attr("class", "quadrant-group")
+            .attr("transform", `translate(${zx(d.budget)}, ${zy(d.rating)})`)
+            .style("pointer-events", "none");
+
+          angles.forEach((angle, i) => {
+            quadrantGroup.append("path")
+              .attr("d", createQuadrantArcPath(0, 0, angle.start, angle.end, innerRadius, outerRadius))
+              .attr("class", "color-arc")
+              .attr("fill", colors[i])
+              .attr("stroke", "rgba(255, 255, 255, 0.3)")
+              .attr("stroke-width", "0.5");
+          });
+        }
+      });
+    }
+
+    // Get current selected IDs (dynamic for re-renders)
+    const selectedIds = new Set(state.deepDive.map((id) => String(id)));
+
+    // Update circles with proper scaling - always use movie's average color
+    plot.selectAll("circle")
+      .attr("r", centerCircleRadius)
+      .attr("fill", (d) => averageMovieColor(d))
+      .attr("fill-opacity", 0.9)
+      .attr("stroke", (d) => (selectedIds.has(String(d.id)) ? "rgba(255, 255, 255, 0.8)" : "rgba(255,255,255,0.15)"))
+      .attr("stroke-width", (d) => (selectedIds.has(String(d.id)) ? 2 * zoomScale : 0.5));
+  };
+
+  // Initial render of circles
   plot
     .selectAll("circle")
     .data(plotted)
@@ -587,10 +677,11 @@ function renderScatter(data) {
     .attr("cy", (d) => zy(d.rating))
     .attr("r", 5)
     .attr("fill", (d) => averageMovieColor(d))
-    .attr("fill-opacity", 1)
+    .attr("fill-opacity", 0.85)
     .style("cursor", "pointer")
-    .attr("stroke", (d) => (selectedIds.has(String(d.id)) ? "#fff" : "none"))
-    .attr("stroke-width", (d) => (selectedIds.has(String(d.id)) ? 1.5 : 0))
+    .style("filter", "drop-shadow(0 0 2px rgba(255, 255, 255, 0.3))")
+    .attr("stroke", (d) => (new Set(state.deepDive.map((id) => String(id))).has(String(d.id)) ? "rgba(255, 255, 255, 0.8)" : "rgba(255,255,255,0.15)"))
+    .attr("stroke-width", (d) => (new Set(state.deepDive.map((id) => String(id))).has(String(d.id)) ? 2 : 0.5))
     .on("mouseenter", (event, d) => {
       const xPos = zx(d.budget);
       const yPos = zy(d.rating);
@@ -602,69 +693,123 @@ function renderScatter(data) {
           `<strong>${d.title}</strong><br/>Budget: $${(d.budget / 1_000_000).toFixed(1)}M<br/>Rating: ${d.rating}`
         );
     })
-.on("click", (_, d) => {
-          const id = d.id;
-          const existing = state.deepDive.findIndex((m) => String(m) === String(id));
-          if (existing >= 0) {
-            state.deepDive.splice(existing, 1);
-          } else {
-            state.deepDive.push(id);
-          }
-          renderScatter(data);
-          renderDeepDiveSelection();
-        })
-        .on("mouseleave", () => tooltip.style("opacity", 0));
+    .on("click", (event, d) => {
+      event.stopPropagation(); // Prevent event bubbling
+      const id = d.id;
+      const existing = state.deepDive.findIndex((m) => String(m) === String(id));
+      if (existing >= 0) {
+        state.deepDive.splice(existing, 1);
+      } else {
+        state.deepDive.push(id);
+      }
+      // Update only the deep dive panel, don't re-render scatter (preserves zoom)
+      renderDeepDiveSelection();
+      // Update visualization to reflect new selection
+      updateVisualization(currentZoomScale);
+    })
+    .on("mouseleave", () => tooltip.style("opacity", 0));
 
-  const brush = d3.brush()
-        .extent([[margin.left, margin.top], [width - margin.right, svgHeight - margin.bottom]])
-        .on("end", (event) => {
-          if (!event.selection) return;
-          const [[x0, y0], [x1, y1]] = event.selection;
-
-          const newlySelected = plotted.filter(d => {
-            const cx = zx(d.budget);
-            const cy = zy(d.rating);
-            return cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1;
-          });
-
-          newlySelected.forEach(movie => {
-            if (!state.deepDive.some(id => String(id) === String(movie.id))) {
-              state.deepDive.push(movie.id);
-            }
-          });
-
-          svg.select(".brush").call(brush.move, null);
-          renderScatter(data);
-          renderDeepDiveSelection();
-        });
-
-      svg.append("g")
-        .attr("class", "brush")
-        .call(brush);
-
-      svg
-        .append("text")
   svg
     .append("text")
     .attr("x", margin.left)
     .attr("y", margin.top - 6)
-    .text("Budget vs. rating — avg movie color");
+    .text("Budget vs. Rating");
 
+  // Add description below the plot
+  container
+    .append("p")
+    .attr("class", "muted")
+    .style("margin-top", "0.5rem")
+    .style("font-size", "12px")
+    .text("Scroll to zoom • Drag to pan • Ctrl+drag to select multiple • Click point to select");
+
+  // Zoom for panning and zooming (default behavior)
   const zoom = d3.zoom()
     .scaleExtent([1, 6])
     .translateExtent([[margin.left, margin.top], [width - margin.right, svgHeight - margin.bottom]])
     .extent([[margin.left, margin.top], [width - margin.right, svgHeight - margin.bottom]])
+    .filter((event) => {
+      // Allow zoom/pan only when Ctrl is NOT pressed (let brush handle Ctrl+drag)
+      // Also allow wheel events for zooming
+      if (event.type === 'wheel') return true;
+      if (event.ctrlKey) return false;
+      return true;
+    })
     .on("zoom", (event) => {
       zx = event.transform.rescaleX(x);
       zy = event.transform.rescaleY(y);
+      currentZoomScale = event.transform.k;
+
       xAxis.call(d3.axisBottom(zx).tickFormat((d) => `$${(d / 1_000_000).toFixed(0)}M`));
       yAxis.call(d3.axisLeft(zy));
+
       plot.selectAll("circle")
         .attr("cx", (d) => zx(d.budget))
         .attr("cy", (d) => zy(d.rating));
+
+      // Update quadrants with new positions and scale
+      updateVisualization(currentZoomScale);
     });
 
   svg.call(zoom);
+
+  // Brush for drag-select (only activates with Ctrl key)
+  const brush = d3.brush()
+    .extent([[margin.left, margin.top], [width - margin.right, svgHeight - margin.bottom]])
+    .filter((event) => {
+      // Only allow brush when Ctrl key is pressed
+      return event.ctrlKey;
+    })
+    .on("start", (event) => {
+      // Only start if Ctrl is pressed
+      if (!event.sourceEvent || !event.sourceEvent.ctrlKey) {
+        svg.select(".brush").call(brush.move, null);
+      }
+    })
+    .on("end", (event) => {
+      if (!event.selection) return;
+      const [[x0, y0], [x1, y1]] = event.selection;
+
+      const newlySelected = plotted.filter(d => {
+        const cx = zx(d.budget);
+        const cy = zy(d.rating);
+        return cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1;
+      });
+
+      newlySelected.forEach(movie => {
+        if (!state.deepDive.some(id => String(id) === String(movie.id))) {
+          state.deepDive.push(movie.id);
+        }
+      });
+
+      svg.select(".brush").call(brush.move, null);
+      // Update visualization without full re-render to preserve zoom
+      renderDeepDiveSelection();
+      updateVisualization(currentZoomScale);
+    });
+
+  // Add brush group on top of zoom
+  const brushGroup = svg.append("g")
+    .attr("class", "brush")
+    .call(brush);
+
+  // Make brush overlay ignore pointer events unless Ctrl is pressed
+  // This allows clicks to pass through to circles
+  brushGroup.select(".overlay")
+    .style("pointer-events", "none");
+
+  // Listen for Ctrl key to toggle brush interactivity
+  d3.select("body")
+    .on("keydown.scatterbrush", (event) => {
+      if (event.key === "Control") {
+        brushGroup.select(".overlay").style("pointer-events", "all");
+      }
+    })
+    .on("keyup.scatterbrush", (event) => {
+      if (event.key === "Control") {
+        brushGroup.select(".overlay").style("pointer-events", "none");
+      }
+    });
 }
 
 function parseMetric(value) {
@@ -919,15 +1064,15 @@ function renderGenreRegionMatrix(data) {
     .attr("stroke", (d) => {
       const regionActive = state.selectedRegions.has(d.region);
       const genreActive = state.selectedGenres.has(d.genre);
-      if (regionActive && genreActive) return "#4ee1a0";
-      if (regionActive || genreActive) return "rgba(78, 225, 160, 0.5)";
-      return "rgba(255,255,255,0.08)";
+      if (regionActive && genreActive) return "rgba(255, 255, 255, 0.5)";
+      if (regionActive || genreActive) return "rgba(255, 255, 255, 0.25)";
+      return "rgba(255,255,255,0.06)";
     })
     .attr("stroke-width", (d) => {
       const regionActive = state.selectedRegions.has(d.region);
       const genreActive = state.selectedGenres.has(d.genre);
       if (regionActive && genreActive) return 2;
-      if (regionActive || genreActive) return 1.2;
+      if (regionActive || genreActive) return 1.5;
       return 1;
     });
 
@@ -1472,135 +1617,242 @@ function renderDeepDiveSelection() {
 }
 
 
-    function renderDeepDiveAverageGlyph(movies, containerSelector) {
-      const container = d3.select(containerSelector);
-      container.selectAll("*").remove();
+function renderDeepDiveAverageGlyph(movies, containerSelector) {
+  const container = d3.select(containerSelector);
+  container.selectAll("*").remove();
 
-      const avgMetrics = {
-        rating: d3.mean(movies, d => d._metrics.rating) || 0,
-        budget: d3.mean(movies, d => d._metrics.budget) || 0,
-        revenue: d3.mean(movies, d => d._metrics.revenue) || 0,
-        viewership: d3.mean(movies, d => d._metrics.viewership) || 0
-      };
+  if (!movies.length) return;
 
-      const width = 350; // Increased width
-      const height = 300; // Increased height
-      const svg = container.append("svg")
-        .attr("width", "100%")
-        .attr("height", height)
-        .attr("viewBox", `0 0 ${width} ${height}`)
-        .attr("preserveAspectRatio", "xMidYMid meet");
+  const avgMetrics = {
+    rating: d3.mean(movies, d => d._metrics.rating) || 0,
+    budget: d3.mean(movies, d => d._metrics.budget) || 0,
+    revenue: d3.mean(movies, d => d._metrics.revenue) || 0,
+    viewership: d3.mean(movies, d => d._metrics.viewership) || 0
+  };
 
-      const budgetMax = Math.max(400_000_000, d3.max(movies, d => d._metrics.budget) || 0);
-      const revenueMax = Math.max(1_000_000_000, d3.max(movies, d => d._metrics.revenue) || 0);
-      const viewershipMax = Math.max(100_000_000, d3.max(movies, d => d._metrics.viewership) || 0);
+  const width = 260;
+  const height = 180;
+  const svg = container.append("svg")
+    .attr("width", "100%")
+    .attr("height", height)
+    .attr("viewBox", `0 0 ${width} ${height}`)
+    .attr("preserveAspectRatio", "xMidYMid meet");
 
-      const metrics = [
-        { label: "Rating", value: avgMetrics.rating, max: 10 },
-        { label: "Budget", value: avgMetrics.budget, max: budgetMax },
-        { label: "Revenue", value: avgMetrics.revenue, max: revenueMax },
-        { label: "Viewers", value: avgMetrics.viewership, max: viewershipMax }
-      ];
+  // Title
+  svg.append("text")
+    .attr("x", width / 2)
+    .attr("y", 14)
+    .attr("text-anchor", "middle")
+    .attr("fill", "var(--muted)")
+    .attr("font-size", "11px")
+    .text(`Average (${movies.length} selected)`);
 
-      const centerX = width / 2;
-      const centerY = height / 2 - 10; // Shifted up slightly
-      const radius = 90;
-      const angleStep = (Math.PI * 2) / metrics.length;
+  const budgetMax = Math.max(400_000_000, d3.max(movies, d => d._metrics.budget) || 0);
+  const revenueMax = Math.max(1_000_000_000, d3.max(movies, d => d._metrics.revenue) || 0);
+  const viewershipMax = Math.max(100_000_000, d3.max(movies, d => d._metrics.viewership) || 0);
 
-      // Background circles
-      for (let i = 1; i <= 4; i += 1) {
-        svg.append("circle")
-          .attr("cx", centerX)
-          .attr("cy", centerY)
-          .attr("r", (radius / 4) * i)
-          .attr("fill", "none")
-          .attr("stroke", "rgba(255,255,255,0.08)");
-      }
+  const metrics = [
+    { label: "Rating", value: avgMetrics.rating, max: 10 },
+    { label: "Budget", value: avgMetrics.budget, max: budgetMax },
+    { label: "Revenue", value: avgMetrics.revenue, max: revenueMax },
+    { label: "Viewers", value: avgMetrics.viewership, max: viewershipMax }
+  ];
 
-      metrics.forEach((m, i) => {
-        const angle = -Math.PI / 2 + i * angleStep;
-        const x = centerX + Math.cos(angle) * radius;
-        const y = centerY + Math.sin(angle) * radius;
+  const centerX = width / 2;
+  const centerY = height / 2 + 10;
+  const radius = 55;
+  const angleStep = (Math.PI * 2) / metrics.length;
 
-        // Axis line
-        svg.append("line")
-          .attr("x1", centerX)
-          .attr("y1", centerY)
-          .attr("x2", x)
-          .attr("y2", y)
-          .attr("stroke", "rgba(255,255,255,0.2)");
+  // Background circles
+  for (let i = 1; i <= 4; i++) {
+    svg.append("circle")
+      .attr("cx", centerX)
+      .attr("cy", centerY)
+      .attr("r", (radius / 4) * i)
+      .attr("fill", "none")
+      .attr("stroke", "rgba(255,255,255,0.06)");
+  }
 
-        // Axis Label text
-        const labelRadius = radius + 25;
-        const lx = centerX + Math.cos(angle) * labelRadius;
-        const ly = centerY + Math.sin(angle) * labelRadius;
+  metrics.forEach((m, i) => {
+    const angle = -Math.PI / 2 + i * angleStep;
+    const x = centerX + Math.cos(angle) * radius;
+    const y = centerY + Math.sin(angle) * radius;
 
-        svg.append("text")
-          .attr("x", lx)
-          .attr("y", ly)
-          .attr("text-anchor", "middle")
-          .attr("dominant-baseline", "middle")
-          .attr("fill", "#4ee1a0")
-          .attr("font-size", "13px")
-          .attr("font-weight", "bold")
-          .text(m.label);
-      });
+    svg.append("line")
+      .attr("x1", centerX)
+      .attr("y1", centerY)
+      .attr("x2", x)
+      .attr("y2", y)
+      .attr("stroke", "rgba(255,255,255,0.1)");
 
-      const radial = d3.lineRadial()
-        .angle((d, i) => -Math.PI / 2 + i * angleStep)
-        .radius((d) => (radius * Math.max(0.05, Math.min(d.value / d.max, 1))))
-        .curve(d3.curveLinearClosed);
+    const labelRadius = radius + 18;
+    svg.append("text")
+      .attr("x", centerX + Math.cos(angle) * labelRadius)
+      .attr("y", centerY + Math.sin(angle) * labelRadius)
+      .attr("text-anchor", "middle")
+      .attr("dominant-baseline", "middle")
+      .attr("fill", "#4ee1a0")
+      .attr("font-size", "10px")
+      .text(m.label);
+  });
 
-      svg.append("path")
-        .datum(metrics)
-        .attr("transform", `translate(${centerX},${centerY})`)
-        .attr("d", radial)
-        .attr("fill", "rgba(60, 180, 255, 0.25)")
-        .attr("stroke", "#3cb4ff")
-        .attr("stroke-width", 3);
+  const radial = d3.lineRadial()
+    .angle((_, i) => -Math.PI / 2 + i * angleStep)
+    .radius((m) => radius * Math.max(0.05, Math.min(m.value / m.max, 1)))
+    .curve(d3.curveLinearClosed);
 
-      svg.append("text")
-        .attr("x", centerX)
-        .attr("y", height - 15)
-        .attr("text-anchor", "middle")
-        .attr("fill", "#fff")
-        .attr("font-weight", "bold")
-        .attr("font-size", "14px")
-        .text(`Average of ${movies.length} Selected Picks`);
-    }
+  svg.append("path")
+    .datum(metrics)
+    .attr("transform", `translate(${centerX},${centerY})`)
+    .attr("d", radial)
+    .attr("fill", "rgba(60, 180, 255, 0.2)")
+    .attr("stroke", "#3cb4ff")
+    .attr("stroke-width", 2);
+}
 
 
 
 function renderDeepDiveCombinedGlyph(movies, highlightId = null) {
-      const container = document.querySelector("#deepdive-combined");
-      if (!container) return;
-
+  const container = document.querySelector("#deepdive-combined");
+  if (!container) return;
   container.innerHTML = "";
 
+  if (!movies.length) return;
 
   const activeIds = new Set(movies.map((m) => String(m.id)));
   state.deepDiveHidden = new Set(
     Array.from(state.deepDiveHidden).filter((id) => activeIds.has(String(id)))
   );
 
-    const width = container.clientWidth || 460;
-  const height = 320;
+  const colors = d3.schemeTableau10;
+  const colorFor = (idx) => colors[idx % colors.length];
+
+  const width = 260;
+  const height = 180;
   const svg = d3.select(container).append("svg")
     .attr("width", "100%")
     .attr("height", height)
     .attr("viewBox", `0 0 ${width} ${height}`)
     .attr("preserveAspectRatio", "xMidYMid meet");
 
-      const legend = document.createElement("div");
-      legend.className = "deepdive-legend";
-      legend.style.display = "flex";
-      legend.style.flexWrap = "wrap";
-      legend.style.gap = "0.5rem";
-      legend.style.marginBottom = "1rem";
-      container.appendChild(legend);
+  // Title
+  svg.append("text")
+    .attr("x", width / 2)
+    .attr("y", 14)
+    .attr("text-anchor", "middle")
+    .attr("fill", "var(--muted)")
+    .attr("font-size", "11px")
+    .text("Comparison");
 
-      const colors = d3.schemeTableau10;
-  const colorFor = (idx) => colors[idx % colors.length];
+  const metricMax = (key, fallback, scale = 1.1) => {
+    const vals = movies
+      .map((m) => m._metrics ? m._metrics[key] : parseMetric(m[key]))
+      .filter((v) => v > 0);
+    if (!vals.length) return fallback;
+    return Math.max(...vals) * scale;
+  };
+
+  const budgetMax = metricMax("budget", 400_000_000);
+  const revenueMax = metricMax("revenue", 3_000_000_000);
+  const viewershipMax = metricMax("viewership", 100_000_000);
+
+  const metrics = [
+    { key: "rating", label: "Rating", max: 10 },
+    { key: "budget", label: "Budget", max: budgetMax },
+    { key: "revenue", label: "Revenue", max: revenueMax },
+    { key: "viewership", label: "Viewers", max: viewershipMax }
+  ];
+
+  const centerX = width / 2;
+  const centerY = height / 2 + 10;
+  const radius = 55;
+  const angleStep = (Math.PI * 2) / metrics.length;
+
+  // Background circles
+  for (let i = 1; i <= 4; i++) {
+    svg.append("circle")
+      .attr("cx", centerX)
+      .attr("cy", centerY)
+      .attr("r", (radius / 4) * i)
+      .attr("fill", "none")
+      .attr("stroke", "rgba(255,255,255,0.06)");
+  }
+
+  // Axes and labels
+  metrics.forEach((m, i) => {
+    const angle = -Math.PI / 2 + i * angleStep;
+    const x = centerX + Math.cos(angle) * radius;
+    const y = centerY + Math.sin(angle) * radius;
+
+    svg.append("line")
+      .attr("x1", centerX)
+      .attr("y1", centerY)
+      .attr("x2", x)
+      .attr("y2", y)
+      .attr("stroke", "rgba(255,255,255,0.1)");
+
+    const labelRadius = radius + 18;
+    svg.append("text")
+      .attr("x", centerX + Math.cos(angle) * labelRadius)
+      .attr("y", centerY + Math.sin(angle) * labelRadius)
+      .attr("text-anchor", "middle")
+      .attr("dominant-baseline", "middle")
+      .attr("fill", "#b7c7e6")
+      .attr("font-size", "10px")
+      .text(m.label);
+  });
+
+  // Movie polygons
+  movies.forEach((movie, idx) => {
+    const id = String(movie.id);
+    if (state.deepDiveHidden.has(id)) return;
+    const isHighlighted = highlightId === id;
+
+    const points = metrics.map((m, i) => {
+      const value = movie._metrics ? movie._metrics[m.key] : parseMetric(movie[m.key]);
+      const normalized = Math.min(value / m.max, 1);
+      return {
+        r: radius * Math.max(normalized, 0.05),
+        angle: -Math.PI / 2 + i * angleStep,
+      };
+    });
+
+    const coords = points.map((p) => ({
+      x: centerX + Math.cos(p.angle) * p.r,
+      y: centerY + Math.sin(p.angle) * p.r,
+    }));
+
+    const path = `M ${coords[0].x} ${coords[0].y} ${coords.slice(1).map((c) => `L ${c.x} ${c.y}`).join(" ")} Z`;
+
+    svg.append("path")
+      .attr("d", path)
+      .attr("fill", colorFor(idx))
+      .attr("fill-opacity", isHighlighted ? 0.5 : 0.15)
+      .attr("stroke", colorFor(idx))
+      .attr("stroke-width", isHighlighted ? 2.5 : 1.5);
+
+    // Corner dots
+    coords.forEach((coord) => {
+      svg.append("circle")
+        .attr("cx", coord.x)
+        .attr("cy", coord.y)
+        .attr("r", 3)
+        .attr("fill", colorFor(idx));
+    });
+  });
+
+  // Description (before legend)
+  const desc = document.createElement("p");
+  desc.className = "muted";
+  desc.style.fontSize = "10px";
+  desc.style.margin = "0.5rem 0 0.3rem 0";
+  desc.textContent = "Click titles to show/hide";
+  container.appendChild(desc);
+
+  // Legend for toggling movies (below the chart)
+  const legend = document.createElement("div");
+  legend.className = "deepdive-legend";
+  container.appendChild(legend);
 
   movies.forEach((movie, idx) => {
     const btn = document.createElement("button");
@@ -1618,113 +1870,6 @@ function renderDeepDiveCombinedGlyph(movies, highlightId = null) {
       renderDeepDiveCombinedGlyph(movies);
     });
     legend.appendChild(btn);
-  });
-
-
-
-  const metricMax = (key, fallback, scale = 1.05) => {
-    console.log(`\nCalculating max for ${key}:`);
-    const vals = movies
-      .map((m) => {
-        const value = m._metrics ? m._metrics[key] : parseMetric(m[key]);
-        console.log(`  ${m.title}: raw=${m[key]}, _metrics=${m._metrics?.[key]}, using=${value}`);
-        return value;
-      })
-      .filter((v) => v > 0);
-    console.log(`  Filtered values (>0):`, vals);
-    if (!vals.length) return fallback;
-    const max = Math.max(...vals) * scale;
-    console.log(`  Max: ${Math.max(...vals)} * ${scale} = ${max}`);
-    return max;
-  };
-  const budgetMax = metricMax("budget", 400_000_000, 1.1);
-  const revenueMax = metricMax("revenue", 3_000_000_000, 1.1);
-  const viewershipMax = metricMax("viewership", 100_000_000, 1.1);
-
-  console.log("\n=== FINAL CALCULATED MAXES ===");
-  console.log("Budget:", budgetMax, "Revenue:", revenueMax, "Viewership:", viewershipMax);
-
-  const metrics = [
-    { key: "rating", label: "Rating", max: 10 },
-    { key: "budget", label: "Budget", max: budgetMax },
-    { key: "revenue", label: "Revenue", max: revenueMax },
-    { key: "viewership", label: "Viewers", max: viewershipMax }
-  ];
-
-  const centerX = width / 2;
-  const centerY = height / 2 + 10;
-  const radius = Math.min(width, height) * 0.32;
-  const levels = 4;
-  const angleStep = (Math.PI * 2) / metrics.length;
-
-  for (let i = 1; i <= levels; i += 1) {
-    svg.append("circle")
-      .attr("cx", centerX)
-      .attr("cy", centerY)
-      .attr("r", (radius / levels) * i)
-      .attr("fill", "none")
-      .attr("stroke", "rgba(255,255,255,0.08)");
-  }
-
-  metrics.forEach((m, i) => {
-    const angle = -Math.PI / 2 + i * angleStep;
-    const x = centerX + Math.cos(angle) * radius;
-    const y = centerY + Math.sin(angle) * radius;
-    svg.append("line")
-      .attr("x1", centerX)
-      .attr("y1", centerY)
-      .attr("x2", x)
-      .attr("y2", y)
-      .attr("stroke", "rgba(255,255,255,0.1)");
-    svg.append("text")
-      .attr("x", centerX + Math.cos(angle) * (radius + 16))
-      .attr("y", centerY + Math.sin(angle) * (radius + 16))
-      .attr("text-anchor", "middle")
-      .attr("dominant-baseline", "middle")
-      .attr("fill", "#b7c7e6")
-      .attr("font-size", "12px")
-      .text(m.label);
-  });
-
-  movies.forEach((movie, idx) => {
-    const id = String(movie.id);
-    if (state.deepDiveHidden.has(id)) return;
-    const isHighlighted = highlightId === id;
-    const points = metrics.map((m, i) => {
-      const value = movie._metrics ? movie._metrics[m.key] : parseMetric(movie[m.key]);
-      const normalized = Math.min(value / m.max, 1);
-      // Use minimum 5% radius to prevent polygon collapse when values are 0
-      const minRadius = 0.05;
-      return {
-        r: radius * Math.max(normalized, minRadius),
-        angle: -Math.PI / 2 + i * angleStep,
-      };
-    });
-    const coords = points.map((point) => ({
-      x: centerX + Math.cos(point.angle) * point.r,
-      y: centerY + Math.sin(point.angle) * point.r,
-    }));
-    const path = coords.length
-      ? `M ${coords[0].x} ${coords[0].y} ${coords.slice(1).map((c) => `L ${c.x} ${c.y}`).join(" ")} Z`
-      : "";
-    svg.append("path")
-      .attr("d", path)
-      .attr("class", `movie-path-${id}`)
-      .attr("fill", colorFor(idx))
-      .attr("fill-opacity", isHighlighted ? 0.8 : 0.18)
-      .attr("stroke", colorFor(idx))
-      .attr("stroke-width", isHighlighted ? 8 : 2)
-      .style("transition", "all 0.2s ease");
-
-    coords.forEach((coord) => {
-      svg.append("circle")
-        .attr("cx", coord.x)
-        .attr("cy", coord.y)
-        .attr("r", 4)
-        .attr("fill", colorFor(idx))
-        .attr("stroke", "#0c0f1a")
-        .attr("stroke-width", 1);
-    });
   });
 }
 

@@ -63,7 +63,7 @@
           <div id="deepdive-panel" class="compare-panel">
             <div class="compare-header">
               <div class="deepdive-header">
-                <h4>Deep Dive picks (up to 3)</h4>
+                <h4>Deep Dive Picks</h4>
                 <span class="muted">Click points in the scatter to add/remove selections, or manually add with the search bar.</span>
               </div>
               <button id="deepdive-clear" class="ghost" type="button">Clear picks</button>
@@ -78,22 +78,12 @@
               <ul id="search-suggestions"></ul>
             </div>
             <div class="deepdive-panel-grid">
-  <!-- The average glyph at the top or side -->
-  <!-- Left Column: Individual Movie Cards & Barcodes -->
-  <div class="deepdive-left-col">
-    <div id="deepdive-grid" class="compare-grid"></div>
-  </div>
-
-  <!-- Right Column: Star Charts (Average & Combined) -->
-  <div class="deepdive-right-col">
-    <div class="card star-plot-card">
-      <div id="deepdive-average"></div>
-    </div>
-    <div class="card star-plot-card">
-      <div id="deepdive-combined" class="deepdive-combined"></div>
-    </div>
-  </div>
-</div>
+              <div id="deepdive-grid" class="compare-grid"></div>
+              <div class="deepdive-charts">
+                <div id="deepdive-average"></div>
+                <div id="deepdive-combined"></div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
