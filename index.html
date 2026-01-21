@@ -56,10 +56,18 @@
       </div>
 
       <section class="card wide">
-        <h2>Deep Dive</h2>
-        <p class="subhead">Budget vs. rating scatter; brush to compare selections</p>
+
+        <div class="deepdive-header-row">
+    <h2>Deep Dive</h2>
+    <button id="selectAllBtn" class="ghost small-btn" type="button">Select All</button>
+  </div>
+
+          <p class="subhead">Budget vs. rating scatter; brush to compare selections</p>
+
         <div class="deepdive-layout">
+
           <div id="scatter"></div>
+
           <div id="deepdive-panel" class="compare-panel">
  <div class="compare-header">
                   <div class="deepdive-header">
@@ -72,7 +80,7 @@
                   <div class="search-header color-search-row">
                     <div class="color-picker-container">
                       <label for="color-wheel">Avg Color:</label>
-                      <input type="color" id="color-wheel" value="#4ee1a0" title="Select a color to find matching movies" />
+                      <input type="color" id="color-wheel" value="#1c639e" title="Select a color to find matching movies" />
                       <button id="color-search-btn" class="ghost" type="button">Find Matches</button>
                     </div>
                     <div class="search-input-container">

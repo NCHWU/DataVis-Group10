@@ -1214,12 +1214,27 @@ svg text {
   font-weight: 600;
 }
 
+
+    .small-btn {
+  font-size: 12px;
+  padding: 4px 8px;
+}  .deepdive-header-row {
+  display: flex;
+  align-items: center;       /* vertically center title and button */
+  gap: 12px;                 /* space between title and button */
+}
+
+/*#selectAllBtn {*/
+/*  margin-left: auto;         !* optional: push to far right *!*/
+/*}*/
+
 /* Tablet/Small laptop breakpoint */
 @media (max-width: 1280px) {
   .deepdive-layout {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: var(--space-md);
   }
+
 
   .deepdive-panel-grid {
     grid-template-columns: 1fr;

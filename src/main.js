@@ -25,6 +25,9 @@ const matrixResetBtn = document.querySelector("#matrix-reset");
 const timelineResetBtn = document.querySelector("#timeline-reset");
 const colorPicker = document.querySelector("#color-wheel");
 const colorSearchBtn = document.querySelector("#color-search-btn");
+const selectAllBtn = document.querySelector("#selectAllBtn");
+
+// document.getElementById("selectAllBtn").addEventListener("click", selectAllDeepDive);
 
 async function loadData() {
   const candidates = [
@@ -119,6 +122,7 @@ async function loadBarcodeColors() {
   console.warn("No barcode color file found. Barcode feature will be disabled.");
   return {};
 }
+
 
 function populateFilters(data) {
   const regions = Array.from(new Set(data.map((d) => regionLabel(d)))).filter(Boolean).sort();
@@ -2093,6 +2097,30 @@ async function init() {
         applyFilters();
       });
     }
+if (selectAllBtn) {
+  selectAllBtn.addEventListener("click", () => {
+    const svg = d3.select("#scatter svg");
+    if (svg.empty()) return;
+
+    // 1️⃣ Grab the currently plotted circles (the same as brush does)
+    const circles = svg.selectAll("circle").data();
+
+    // 2️⃣ Update state.deepDive only for visible points
+    state.deepDive = circles.map(d => d.id);
+    state.deepDiveHighlights = new Set(state.deepDive.map(String));
+
+    // 3️⃣ Update the deep dive grid panel (titles)
+    renderDeepDiveSelection();
+
+    // 4️⃣ Update only the strokes of visible circles (no re-render of scatter)
+    svg.selectAll("circle")
+      .attr("stroke", d => state.deepDiveHighlights.has(String(d.id))
+        ? "rgba(255, 255, 255, 0.8)"
+        : "rgba(255,255,255,0.15)")
+      .attr("stroke-width", d => state.deepDiveHighlights.has(String(d.id)) ? 2 : 0.5);
+  });
+}
+
     if (resetBtn) {
       resetBtn.addEventListener("click", () => {
         if (regionFilter) regionFilter.value = "";
