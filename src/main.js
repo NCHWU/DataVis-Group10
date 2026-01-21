@@ -23,6 +23,8 @@ const compareClearBtn = document.querySelector("#compare-clear");
 const deepDiveClearBtn = document.querySelector("#deepdive-clear");
 const matrixResetBtn = document.querySelector("#matrix-reset");
 const timelineResetBtn = document.querySelector("#timeline-reset");
+const colorPicker = document.querySelector("#color-wheel");
+const colorSearchBtn = document.querySelector("#color-search-btn");
 
 async function loadData() {
   const candidates = [
@@ -850,6 +852,51 @@ function averageMovieColor(movie) {
   return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
 }
 
+function hexToRgb(hex) {
+const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+return result ? [
+  parseInt(result[1], 16),
+  parseInt(result[2], 16),
+  parseInt(result[3], 16)
+] : null;
+}
+
+  function findMoviesByColor(hexColor) {
+    const targetRgb = hexToRgb(hexColor);
+    if (!targetRgb) return;
+
+    const maxDistance = 100
+      console.log(state.deepDive)
+    // Filter movies that have color data
+        const selectedIds = new Set(state.deepDive); // keep current selection
+  const candidates = state.data.filter(m => selectedIds.has(m.id) && state.barcodeColors[m.title]);
+
+    // const candidates = state.data.filter(m => state.deepDive[m.title]);   // hier aanpassen alleen selectie
+    console.log(candidates)
+    // Calculate distance and sort
+    const matches = candidates.map(movie => {
+      const movieColor = state.barcodeColors[movie.title].overall_avg;
+      if (!movieColor) return null;
+      // Euclidean distance in RGB space
+      const dist = Math.sqrt(
+        Math.pow(movieColor[0] - targetRgb[0], 2) +
+        Math.pow(movieColor[1] - targetRgb[1], 2) +
+        Math.pow(movieColor[2] - targetRgb[2], 2)
+      );
+      return { id: movie.id, dist };
+    })
+
+    .filter(m => m.dist <= maxDistance)
+    .sort((a, b) => a.dist - b.dist)
+    .slice(0, 50);
+
+     console.log(matches)
+    state.deepDive = matches.map(m => m.id);
+    renderDeepDiveSelection();
+    renderScatter(state.filtered);
+  }
+
+
 function kMeansColors(colors, k) {
   if (!colors.length) return [];
   const unique = [];
@@ -1418,6 +1465,7 @@ function renderDeepDiveAverageGlyph(movies, containerSelector) {
 
   // Title
   svg.append("text")
+      .attr("class", "comparison-title")
     .attr("x", width / 2)
     .attr("y", 30)
     .attr("text-anchor", "middle")
@@ -1598,12 +1646,14 @@ function renderDeepDiveCombinedGlyph(movies, highlightId = null) {
 
   // Title
   svg.append("text")
+      .attr("class", "comparison-title")
     .attr("x", width / 2)
     .attr("y", 30)
     .attr("text-anchor", "middle")
-    .attr("fill", "var(--muted)")
+    .attr("fill", "#ffffff")
+    .attr("color", "white")
     .attr("font-size", "30px")
-    .text("Comparison");
+    .text("All Movies");
 
   const metricMax = (key, fallback, scale = 1.1) => {
     const vals = movies
@@ -1969,6 +2019,13 @@ async function init() {
     if (regionFilter) regionFilter.addEventListener("change", applyFilters);
     if (genreFilter) genreFilter.addEventListener("change", applyFilters);
     searchInput.addEventListener("input", (e) => renderSearchResult(e.target.value));
+
+    if (colorSearchBtn && colorPicker) {
+      colorSearchBtn.addEventListener("click", () => {
+        findMoviesByColor(colorPicker.value);
+      });
+    }
+
     console.log("[init] buttons present", {
       compareAdd: !!compareAddBtn,
       compareClear: !!compareClearBtn,
