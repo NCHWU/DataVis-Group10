@@ -60,7 +60,15 @@
         <div class="deepdive-header-row">
     <h2>Deep Dive</h2>
     <button id="selectAllBtn" class="ghost small-btn" type="button">Select All</button>
-  </div>
+
+          <button id="deepdive-clear" class="ghost" type="button">Clear picks</button>
+            <div class="color-picker-container">
+                <button id="color-search-btn" class="ghost" type="button">Filter by Color: </button>
+                <input type="color" id="color-wheel" value="#1c639e" title="Select a color to find matching movies" />
+            </div>
+            <input id="search-title" class="search-input" type="search" placeholder="Search for a specific title..." />
+            <ul id="search-suggestions"></ul>
+        </div>
 
           <p class="subhead">Budget vs. rating scatter; brush to compare selections</p>
 
@@ -72,26 +80,17 @@
  <div class="compare-header">
                   <div class="deepdive-header">
                     <h4>Deep Dive Picks</h4>
-                    <span class="muted">Click dots, use search, or <strong>pick a color</strong> to find matching movies.</span>
-                  </div>
-                  <button id="deepdive-clear" class="ghost" type="button">Clear picks</button>
-                </div>
+                    <span class="muted">Click dots, ctrl drag, or use search to find movies.</span>
+
                 <div class="search-block compact">
                   <div class="search-header color-search-row">
-                    <div class="color-picker-container">
-                      <label for="color-wheel">Avg Color:</label>
-                      <input type="color" id="color-wheel" value="#1c639e" title="Select a color to find matching movies" />
-                      <button id="color-search-btn" class="ghost" type="button">Find Matches</button>
-                    </div>
-                    <div class="search-input-container">
-                      <input id="search-title" type="search" placeholder="Start typing a title..." />
-                    </div>
-                  </div>
-                  <ul id="search-suggestions"></ul>
-                </div>
+
+
+
                 <div class="deepdive-panel-grid">
               <div class="deepdive-list-container">
                 <div id="deepdive-grid" class="compare-grid"></div>
+                  <div id="deepdive-empty-message"></div>
               </div>
             </div>
           </div>

@@ -1305,20 +1305,37 @@ function renderDeepDiveSelection() {
       const container = document.querySelector("#deepdive-grid");
       const combined = document.querySelector("#deepdive-combined");
       const averageContainer = document.querySelector("#deepdive-average");
+      const comparativeSection = document.querySelector("#deepdive-combined").closest("section"); // parent section
 
       if (!container) return;
       container.innerHTML = "";
       if (combined) combined.innerHTML = "";
       if (averageContainer) averageContainer.innerHTML = "";
 
-      if (!state.deepDive.length) {
-        if (combined) {
-          combined.innerHTML = `<p class="muted">Select movies to compare the combined glyph.</p>`;
-        }
-        container.innerHTML = `<p class="muted">No movies selected yet. Click or drag-select dots to explore.</p>`;
-        return;
-      }
+      const oldMsg = comparativeSection.querySelector(".deepdive-placeholder-msg");
+  if (oldMsg) oldMsg.remove();
 
+
+  if (!state.deepDive.length) {
+    // Add message **after the header**
+    const msg = document.createElement("p");
+    msg.className = "muted deepdive-placeholder-msg";
+    msg.textContent = " - Select movies to compare the combined glyph.";
+
+  const header = comparativeSection.querySelector("h2");
+  if (header) {
+    // Wrap header and message in a flex container
+    const wrapper = document.createElement("div");
+    wrapper.className = "comparative-header-row";
+
+    header.replaceWith(wrapper); // remove original header
+    wrapper.appendChild(header);  // put header inside wrapper
+    wrapper.appendChild(msg);     // put message next to header
+  }
+
+  container.innerHTML = `<p class="muted">  (No movies selected yet. Click or drag-select dots to explore)</p>`;
+  return;
+}
       const picks = state.deepDive
         .map((id) => state.data.find((d) => String(d.id) === String(id)))
         .filter(Boolean)
