@@ -1494,9 +1494,9 @@ function renderDeepDiveAverageGlyph(movies, containerSelector) {
     .attr("font-size", "30px")
     .text(`Average (${movies.length} selected)`);
 
-  const budgetMax = Math.max(400_000_000, d3.max(movies, d => d._metrics.budget) || 0);
-  const revenueMax = Math.max(1_000_000_000, d3.max(movies, d => d._metrics.revenue) || 0);
-  const viewershipMax = Math.max(100_000_000, d3.max(movies, d => d._metrics.viewership) || 0);
+  const budgetMax =  1.1 * d3.max(movies, d => d._metrics.budget);
+  const revenueMax = 1.1 * d3.max(movies, d => d._metrics.revenue);
+  const viewershipMax =  1.1 * d3.max(movies, d => d._metrics.viewership);
 
   const metrics = [
     { label: "Rating", value: avgMetrics.rating, max: 10 },
@@ -1639,6 +1639,8 @@ const labelRadius = radius + 18;
     .attr("stroke", "#3cb4ff")
     .attr("stroke-width", 2);
 }
+
+
 
 
 
