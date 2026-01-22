@@ -29,6 +29,12 @@ const selectAllBtn = document.querySelector("#selectAllBtn");
 
 // document.getElementById("selectAllBtn").addEventListener("click", selectAllDeepDive);
 
+
+window.addEventListener("DOMContentLoaded", () => {
+  const title = document.getElementById("average_color_glyph-title");
+  if (title) title.classList.remove("hidden");
+});
+
 async function loadData() {
   const candidates = [
     "./public/data/processed.json",
@@ -234,6 +240,71 @@ function renderTitles() {
   if (timelineTitle) {
     timelineTitle.textContent = `Timeline — ${genre} in ${region} (${years})`;
   }
+}
+
+
+
+function ensureAverageColorSVG() {
+  const container = document.getElementById("average_color_glyph");
+  if (!container) return null;
+
+  container.innerHTML = "";
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("id", "average-color-circle");
+  svg.setAttribute("viewBox", "0 0 120 120");
+  svg.setAttribute("width", "120");
+  svg.setAttribute("height", "120");
+
+  // optional center circle
+  const center = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  center.setAttribute("cx", 60);
+  center.setAttribute("cy", 60);
+  center.setAttribute("r", 25);
+  center.setAttribute("fill", "#2b3344");
+  svg.appendChild(center);
+
+  container.appendChild(svg);
+  return svg;
+}
+
+function computeAverageColorData(movieIds) {
+  const colors = movieIds
+    .map(id => {
+      const movie = state.data.find(d => String(d.id) === String(id));
+      return movie ? state.barcodeColors[movie.title] : null;
+    })
+    .filter(d => d && Array.isArray(d.four_opposites) && Array.isArray(d.overall_avg));
+
+  if (!colors.length) return null;
+
+  const avgOverall = colors.reduce(
+    (acc, c) => {
+      acc[0] += c.overall_avg[0];
+      acc[1] += c.overall_avg[1];
+      acc[2] += c.overall_avg[2];
+      return acc;
+    },
+    [0, 0, 0]
+  ).map(v => v / colors.length);
+
+  const avgFourOpposites = [0, 1, 2, 3].map(i => {
+    const sum = colors.reduce(
+      (acc, c) => {
+        acc[0] += c.four_opposites[i][0];
+        acc[1] += c.four_opposites[i][1];
+        acc[2] += c.four_opposites[i][2];
+        return acc;
+      },
+      [0, 0, 0]
+    );
+    return sum.map(v => v / colors.length);
+  });
+
+  return {
+    overall_avg: avgOverall,
+    four_opposites: avgFourOpposites
+  };
 }
 
 function renderSummary(data) {
@@ -528,7 +599,7 @@ function renderScatter(data) {
   const visible = filtered;
 
   // Downsample if very dense to keep plot readable.
-  const maxPoints = 800;
+  const maxPoints = 1000;
   const step = Math.max(1, Math.ceil(visible.length / maxPoints));
   const plotted = visible.filter((_, i) => i % step === 0);
 
@@ -1301,6 +1372,89 @@ function renderColorCircle(colorData, svgSelector) {
   });
 }
 
+function renderColorCircle_total_average(colorData, svgSelector) {
+  const svg = document.querySelector(svgSelector);
+  if (!svg || !colorData || !Array.isArray(colorData.four_opposites) || colorData.four_opposites.length < 4) {
+    return;
+  }
+
+  // Clear previous glyph
+  // svg.querySelectorAll("*").forEach(node => node.remove());
+
+  // Compute colors
+  const arcColors = colorData.four_opposites.map(rgb =>
+    `rgb(${Math.round(rgb[0])}, ${Math.round(rgb[1])}, ${Math.round(rgb[2])})`
+  );
+
+  const centerColor = colorData.overall_avg
+    ? `rgb(${colorData.overall_avg.map(c => Math.round(c)).join(",")})`
+    : "#333";
+
+  // SVG dimensions
+  const viewBox = svg.getAttribute("viewBox");
+  const [_, __, vbWidth, vbHeight] = viewBox ? viewBox.split(/\s+/).map(Number) : [0, 0, 500, 500];
+  const size = Math.min(vbWidth || 500, vbHeight || 500);
+
+  // Define radii for larger glyph
+  const outerRadius = size * 0.45; // arcs outer radius
+  const innerRadius = size * 0.25; // arcs inner radius
+  const centerRadius = size * 0.20; // inner circle radius
+
+  const centerX = (vbWidth || 500) / 2;
+  const centerY = (vbHeight || 500) / 2;
+
+  // Draw inner circle (overall_avg)
+  const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  circle.setAttribute("cx", centerX);
+  circle.setAttribute("cy", centerY);
+  circle.setAttribute("r", centerRadius);
+  circle.setAttribute("fill", centerColor);
+  svg.appendChild(circle);
+
+  // Helper: create path for arc
+  const createArcPath = (startAngle, endAngle, innerR, outerR) => {
+    const startRad = (startAngle - 90) * Math.PI / 180;
+    const endRad = (endAngle - 90) * Math.PI / 180;
+
+    const x1 = centerX + innerR * Math.cos(startRad);
+    const y1 = centerY + innerR * Math.sin(startRad);
+    const x2 = centerX + outerR * Math.cos(startRad);
+    const y2 = centerY + outerR * Math.sin(startRad);
+    const x3 = centerX + outerR * Math.cos(endRad);
+    const y3 = centerY + outerR * Math.sin(endRad);
+    const x4 = centerX + innerR * Math.cos(endRad);
+    const y4 = centerY + innerR * Math.sin(endRad);
+
+    return `
+      M ${x1} ${y1}
+      L ${x2} ${y2}
+      A ${outerR} ${outerR} 0 0 1 ${x3} ${y3}
+      L ${x4} ${y4}
+      A ${innerR} ${innerR} 0 0 0 ${x1} ${y1}
+      Z
+    `;
+  };
+
+  // Create four arcs
+  const angles = [
+    { start: 0, end: 90 },
+    { start: 90, end: 180 },
+    { start: 180, end: 270 },
+    { start: 270, end: 360 }
+  ];
+
+  angles.forEach((angle, i) => {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", createArcPath(angle.start, angle.end, innerRadius, outerRadius));
+    path.setAttribute("fill", arcColors[i]);
+    path.setAttribute("stroke", "rgba(255,255,255,0.1)");
+    path.setAttribute("stroke-width", "1");
+    path.setAttribute("class", "color-arc");
+    svg.appendChild(path);
+  });
+}
+
+
 function renderDeepDiveSelection() {
       const container = document.querySelector("#deepdive-grid");
       const combined = document.querySelector("#deepdive-combined");
@@ -1365,6 +1519,49 @@ function renderDeepDiveSelection() {
   if (averageContainer) {
       renderDeepDiveAverageGlyph(picks, "#deepdive-average");
   }
+
+function renderAverageColorGlyph() {
+  if (!state.deepDive.length) return;
+
+  const container = d3.select("#average_color_glyph");
+  container.selectAll("*").remove(); // clear previous content
+
+  const width = 500;
+  const height = 500;
+  const titleHeight = 0; // space for title
+
+  const svg = container.append("svg")
+    .attr("width", "100%")
+    .attr("height", height)
+    .attr("viewBox", `0 0 ${width * 2} ${height * 2}`)
+    .attr("preserveAspectRatio", "xMidYMid meet")
+    .attr("id", "average-color-circle"); // ID used by renderColorCircle
+
+  // Title
+  svg.append("text")
+    .attr("class", "comparison-title")
+    .attr("x", width / 2)
+    .attr("y", titleHeight)
+    .attr("text-anchor", "middle")
+    .attr("fill", "#ffffff")
+    .attr("font-size", "300px")
+    .text("Dominant Colors Selection");
+
+  // Circle under title
+    const avgColorData = computeAverageColorData(state.deepDive);
+
+
+    renderColorCircle_total_average(avgColorData, "#average-color-circle");
+
+}
+
+  if (!state.deepDive.length) {
+  document.getElementById("average_color_glyph").innerHTML = "";
+}
+
+if (picks.length) {
+  renderAverageColorGlyph();
+}
 
   picks.forEach((movie) => {
     const safeId = String(movie.id);
@@ -1494,9 +1691,9 @@ function renderDeepDiveAverageGlyph(movies, containerSelector) {
     .attr("font-size", "30px")
     .text(`Average (${movies.length} selected)`);
 
-  const budgetMax = Math.max(400_000_000, d3.max(movies, d => d._metrics.budget) || 0);
-  const revenueMax = Math.max(1_000_000_000, d3.max(movies, d => d._metrics.revenue) || 0);
-  const viewershipMax = Math.max(100_000_000, d3.max(movies, d => d._metrics.viewership) || 0);
+  const budgetMax =  1.1 * d3.max(movies, d => d._metrics.budget);
+  const revenueMax = 1.1 * d3.max(movies, d => d._metrics.revenue);
+  const viewershipMax =  1.1 * d3.max(movies, d => d._metrics.viewership);
 
   const metrics = [
     { label: "Rating", value: avgMetrics.rating, max: 10 },
@@ -1639,6 +1836,7 @@ const labelRadius = radius + 18;
     .attr("stroke", "#3cb4ff")
     .attr("stroke-width", 2);
 }
+
 
 
 

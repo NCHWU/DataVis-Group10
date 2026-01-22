@@ -417,6 +417,7 @@ svg text {
     #deepdive-combined svg text.comparison-title {
       fill: #ffffff !important;
     }
+
 .axis line,
 .axis path {
   stroke: var(--grid);
@@ -457,6 +458,28 @@ svg text {
   color: var(--muted);
   display: grid;
   gap: 0.3rem;
+}
+.glyph-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  height: 100%;
+  padding: 20px;
+}
+
+.glyph-title {
+  margin-bottom: 12px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #cfe6ff;
+  letter-spacing: 0.3px;
+}
+
+#average-color-circle {
+  width: 180px;     /* 🔼 increase size here */
+  height: 180px;
 }
 
 .intro-steps li {
@@ -1156,7 +1179,9 @@ svg text {
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
-
+.hidden {
+  display: none;
+}
 .barcode-container {
   width: 100%;
   height: 100px;
