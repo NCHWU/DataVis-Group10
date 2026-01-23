@@ -61,4 +61,4 @@ Notes
 -----
 - All dependencies for the page are loaded via CDN; the repo stays static-site–friendly.
 - The frontend code already loads `public/data/sample_processed.json` so you can see placeholder charts without real data.
-- AI  tools like codex, claude, ChatGPT were used for code formatting, comments formatting, evaluating and formatting documentation. It has been used as assistant to help implementing elements of the dashboard, and connecting it to the backend.
+- AI tools like codex, claude, ChatGPT were used for code formatting, comments formatting, evaluation of code, formatting documentation, solving merge conflicts. It has been used as assistant to help implementing elements of the dashboard, and connecting it to the backend.
