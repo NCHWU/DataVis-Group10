@@ -1,6 +1,9 @@
+"""YouTube trailer URL lookup using yt-dlp."""
 import yt_dlp
 
+
 def find_trailer(movie_title):
+    """Search YouTube for a movie's official trailer and return the URL."""
     query = f"ytsearch1:{movie_title} official trailer"  # '1' = return 1 result
     ydl_opts = {
         'quiet': True,

@@ -1,17 +1,26 @@
+// ============================================================================
+// STATE MANAGEMENT
+// ============================================================================
+
+// Global application state - all data and UI selections
 const state = {
-  data: [],
-  filtered: [],
-  years: { min: 1900, max: 2030 },
-  timelineSelection: { min: 1900, max: 2030 },
-  compare: [],
-  selected: null,
-  barcodeColors: {},
-  scatterGenres: new Set(),
-  deepDive: [],
-  selectedRegions: new Set(),
-  selectedGenres: new Set(),
-  deepDiveHidden: new Set(),
+  data: [],                              // All loaded movie records
+  filtered: [],                          // Movies after applying filters
+  years: { min: 1900, max: 2030 },       // Data year range
+  timelineSelection: { min: 1900, max: 2030 }, // User-selected year range
+  compare: [],                           // IDs of movies in compare panel
+  selected: null,                        // Currently selected movie from search
+  barcodeColors: {},                     // Title → color data lookup
+  scatterGenres: new Set(),              // Genres shown in scatter plot
+  deepDive: [],                          // IDs of movies in deep dive panel
+  selectedRegions: new Set(),            // Regions selected via matrix
+  selectedGenres: new Set(),             // Genres selected via matrix
+  deepDiveHidden: new Set(),             // IDs hidden in combined glyph
 };
+
+// ============================================================================
+// DOM REFERENCES
+// ============================================================================
 
 const regionFilter = document.querySelector("#region-filter");
 const genreFilter = document.querySelector("#genre-filter");
@@ -24,6 +33,11 @@ const deepDiveClearBtn = document.querySelector("#deepdive-clear");
 const matrixResetBtn = document.querySelector("#matrix-reset");
 const timelineResetBtn = document.querySelector("#timeline-reset");
 
+// ============================================================================
+// DATA LOADING
+// ============================================================================
+
+// Loads movie data from JSON, tries multiple paths, falls back to sample
 async function loadData() {
   const candidates = [
     "./public/data/processed.json",
@@ -61,6 +75,7 @@ async function loadData() {
   throw new Error("No data file found. Run the prep script first.");
 }
 
+// Loads barcode color data, returns lookup object keyed by movie title
 async function loadBarcodeColors() {
   const candidates = [
     "./public/data/movies_colors.json",
@@ -118,6 +133,11 @@ async function loadBarcodeColors() {
   return {};
 }
 
+// ============================================================================
+// FILTERING
+// ============================================================================
+
+// Populates region and genre dropdowns from data, sets year range
 function populateFilters(data) {
   const regions = Array.from(new Set(data.map((d) => regionLabel(d)))).filter(Boolean).sort();
   if (regionFilter) {
@@ -140,6 +160,7 @@ function populateFilters(data) {
   state.timelineSelection = { min: minYear, max: maxYear };
 }
 
+// Applies all active filters to state.data, updates state.filtered, triggers render
 function applyFilters() {
   const minYear = state.timelineSelection.min;
   const maxYear = state.timelineSelection.max;
@@ -153,6 +174,7 @@ function applyFilters() {
   render();
 }
 
+// Returns data filtered by selected regions and genres (before year filter)
 function baseDataForSelections() {
   const hasRegions = state.selectedRegions.size > 0;
   const hasGenres = state.selectedGenres.size > 0;
@@ -165,16 +187,23 @@ function baseDataForSelections() {
   });
 }
 
+// Checks if movie falls within the given year range
 function matchesYearRange(d, minYear, maxYear) {
   return (!d.release_year && d.release_year !== 0) || (d.release_year >= minYear && d.release_year <= maxYear);
 }
 
+// Extracts display label for a movie's region (falls back to country or "Unknown")
 function regionLabel(d) {
   const reg = d.region && d.region !== "Other" && d.region !== "Unknown" ? d.region : null;
   const country = d.country && d.country !== "Unknown" ? d.country : null;
   return reg || country || "Unknown";
 }
 
+// ============================================================================
+// RENDER ORCHESTRATION
+// ============================================================================
+
+// Main render function - calls all visualization renderers
 function render() {
   renderTitles();
   const minYear = state.timelineSelection.min;
@@ -193,25 +222,28 @@ function render() {
   renderDeepDiveSelection();
 }
 
-
+// Returns formatted string of selected regions for display
 function currentRegionLabel() {
   if (!state.selectedRegions.size) return "All regions";
   const selected = Array.from(state.selectedRegions).sort();
   return selected.length <= 3 ? selected.join(", ") : `${selected.slice(0, 3).join(", ")} +${selected.length - 3}`;
 }
 
+// Returns formatted string of selected genres for display
 function currentGenreLabel() {
   if (!state.selectedGenres.size) return "All genres";
   const selected = Array.from(state.selectedGenres).sort();
   return selected.length <= 3 ? selected.join(", ") : `${selected.slice(0, 3).join(", ")} +${selected.length - 3}`;
 }
 
+// Returns formatted year range string (e.g., "1990–2024")
 function currentYearRangeLabel() {
   const minYear = state.timelineSelection.min;
   const maxYear = state.timelineSelection.max;
   return `${minYear}–${maxYear}`;
 }
 
+// Updates section titles based on current filter selections
 function renderTitles() {
   const region = currentRegionLabel();
   const genre = currentGenreLabel();
@@ -230,6 +262,7 @@ function renderTitles() {
   }
 }
 
+// Renders summary statistics cards (title count, avg rating, avg budget, top region)
 function renderSummary(data) {
   const container = document.querySelector("#summary-grid");
   if (!container) return;
@@ -263,6 +296,11 @@ function renderSummary(data) {
   });
 }
 
+// ============================================================================
+// TIMELINE VISUALIZATION
+// ============================================================================
+
+// Renders dual-axis line chart (budget + rating over time) with brush selection
 function renderTimeline(data) {
   const container = d3.select("#timeline");
   container.selectAll("*").remove();
@@ -510,6 +548,11 @@ function renderTimeline(data) {
     });
 }
 
+// ============================================================================
+// SCATTER PLOT
+// ============================================================================
+
+// Renders budget vs rating scatter plot with zoom, pan, and multi-select
 function renderScatter(data) {
   const container = d3.select("#scatter");
   container.selectAll("*").remove();
@@ -817,6 +860,11 @@ function renderScatter(data) {
     });
 }
 
+// ============================================================================
+// COLOR UTILITIES
+// ============================================================================
+
+// Parses a metric value (handles null, numbers, currency strings)
 function parseMetric(value) {
   if (value === null || value === undefined) return 0;
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -828,18 +876,22 @@ function parseMetric(value) {
   return 0;
 }
 
+// Clamps a value between min and max
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+// Creates a unique string key from RGB array
 function colorKey(rgb) {
   return `${rgb[0]},${rgb[1]},${rgb[2]}`;
 }
 
+// Adjusts RGB color brightness by a factor
 function adjustColor(rgb, factor) {
   return rgb.map((v) => clamp(Math.round(v * factor), 20, 240));
 }
 
+// Gets the average color for a movie from barcode data, returns CSS rgb string
 function averageMovieColor(movie) {
   const fallback = "rgb(120, 140, 170)";
   if (!movie || !movie.title) return fallback;
@@ -850,6 +902,7 @@ function averageMovieColor(movie) {
   return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
 }
 
+// Performs k-means clustering on colors to find k representative colors
 function kMeansColors(colors, k) {
   if (!colors.length) return [];
   const unique = [];
@@ -909,6 +962,11 @@ function kMeansColors(colors, k) {
   return centers;
 }
 
+// ============================================================================
+// GENRE-REGION MATRIX
+// ============================================================================
+
+// Renders clickable heatmap showing genre/region combinations with color quadrants
 function renderGenreRegionMatrix(data) {
   const container = d3.select("#matrix");
   container.selectAll("*").remove();
@@ -1101,6 +1159,11 @@ function renderGenreRegionMatrix(data) {
     .text((d) => d.count || "");
 }
 
+// ============================================================================
+// SEARCH
+// ============================================================================
+
+// Renders search autocomplete suggestions and handles selection
 function renderSearchResult(query) {
   const source = state.data;
   if (!searchSuggestions) return;
@@ -1132,6 +1195,11 @@ function renderSearchResult(query) {
   }
 }
 
+// ============================================================================
+// BARCODE & COLOR RENDERING
+// ============================================================================
+
+// Renders movie barcode (vertical color stripes) on a canvas element
 function renderBarcode(avgColors, containerSelector) {
   const container = document.querySelector(containerSelector);
   if (!container || !avgColors || avgColors.length === 0) {
@@ -1167,6 +1235,7 @@ function renderBarcode(avgColors, containerSelector) {
   container.appendChild(canvas);
 }
 
+// Renders four color swatches from movie's opposite colors
 function renderColorSwatches(colorData, containerSelector) {
   const swatchContainer = document.querySelector(containerSelector);
   if (!swatchContainer || !colorData || !Array.isArray(colorData.four_opposites)) {
@@ -1185,6 +1254,7 @@ function renderColorSwatches(colorData, containerSelector) {
   });
 }
 
+// Renders circular color glyph with four arc quadrants around center
 function renderColorCircle(colorData, svgSelector) {
   const svg = document.querySelector(svgSelector);
   if (!svg || !colorData || !Array.isArray(colorData.four_opposites) || colorData.four_opposites.length < 4) {
@@ -1250,6 +1320,11 @@ function renderColorCircle(colorData, svgSelector) {
   });
 }
 
+// ============================================================================
+// MOVIE GLYPHS
+// ============================================================================
+
+// Renders circular gauge + horizontal bars for a single movie's metrics
 function renderMovieGlyph(movie, containerSelector) {
   const container = d3.select(containerSelector);
   container.selectAll("*").remove();
@@ -1397,6 +1472,7 @@ function renderMovieGlyph(movie, containerSelector) {
   });
 }
 
+// Renders radar/spider chart for a single movie's metrics
 function renderDeepDiveGlyph(movie, containerSelector) {
   const container = d3.select(containerSelector);
   container.selectAll("*").remove();
@@ -1478,6 +1554,11 @@ function renderDeepDiveGlyph(movie, containerSelector) {
     .text("Rating • Budget • Revenue • Viewers");
 }
 
+// ============================================================================
+// DEEP DIVE PANEL
+// ============================================================================
+
+// Renders the deep dive panel with selected movie cards, barcodes, and glyphs
 function renderDeepDiveSelection() {
       const container = document.querySelector("#deepdive-grid");
       const combined = document.querySelector("#deepdive-combined");
@@ -1621,7 +1702,7 @@ function renderDeepDiveSelection() {
   });
 }
 
-
+// Renders radar chart showing average metrics across all selected movies
 function renderDeepDiveAverageGlyph(movies, containerSelector) {
   const container = d3.select(containerSelector);
   container.selectAll("*").remove();
@@ -1715,8 +1796,7 @@ function renderDeepDiveAverageGlyph(movies, containerSelector) {
     .attr("stroke-width", 2);
 }
 
-
-
+// Renders overlaid radar chart comparing multiple movies with toggle legend
 function renderDeepDiveCombinedGlyph(movies, highlightId = null) {
   const container = document.querySelector("#deepdive-combined");
   if (!container) return;
@@ -1878,6 +1958,11 @@ function renderDeepDiveCombinedGlyph(movies, highlightId = null) {
   });
 }
 
+// ============================================================================
+// COMPARE PANEL
+// ============================================================================
+
+// Renders comparison cards for movies added to the compare list
 function renderCompare() {
   const container = document.querySelector("#compare-grid");
   if (!container) return;
@@ -1920,6 +2005,11 @@ function renderCompare() {
   });
 }
 
+// ============================================================================
+// TOP PERFORMERS
+// ============================================================================
+
+// Renders top 5 movies by IMDB rating
 function renderTopRated() {
   const container = document.querySelector("#top-rated-list");
   if (!container) return;
@@ -1948,6 +2038,7 @@ function renderTopRated() {
   });
 }
 
+// Renders top 5 movies by box office revenue
 function renderTopRevenue() {
   const container = document.querySelector("#top-revenue-list");
   if (!container) return;
@@ -1976,6 +2067,7 @@ function renderTopRevenue() {
   });
 }
 
+// Renders top 5 movies by production budget
 function renderTopBudget() {
   const container = document.querySelector("#top-budget-list");
   if (!container) return;
@@ -2004,6 +2096,7 @@ function renderTopBudget() {
   });
 }
 
+// Renders top 5 movies by Netflix viewership
 function renderTopViewership() {
   const container = document.querySelector("#top-viewership-list");
   if (!container) return;
@@ -2032,6 +2125,11 @@ function renderTopViewership() {
   });
 }
 
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
+
+// Loads data, sets up filters, attaches event listeners, and starts the app
 async function init() {
   try {
     state.data = await loadData();

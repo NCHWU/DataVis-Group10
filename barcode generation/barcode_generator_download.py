@@ -1,3 +1,4 @@
+"""Downloads movie trailers and extracts color barcodes from video frames."""
 import subprocess
 import cv2  # pip install opencv-python
 import numpy as np
@@ -7,7 +8,6 @@ import time
 import re
 from encoder import pick_most_different_colors, get_barcode_png
 import json
-import os
 import pandas as pd
 
 
@@ -42,6 +42,7 @@ def download_video(url, out_path="video.mp4", retries=5, delay=3):
 
 
 def is_title_screen(frame):
+    """Detect if frame is a title screen by checking side strip variance."""
     h, w = frame.shape[:2]
     sw = 30      # side strip width
     vm = 20      # vertical margin to skip black bars
@@ -56,7 +57,7 @@ def is_title_screen(frame):
     return not sides_std < 0.25  # adjust threshold empirically
 
 def downsample_uniformly(lst, max_size=200):
-
+    """Uniformly downsample a list to at most max_size elements."""
     n = len(lst)
     print(f"size before downsizing: {n}")
     if n <= max_size:
@@ -69,6 +70,7 @@ def downsample_uniformly(lst, max_size=200):
 
 
 def video_to_color_barcode(video_path, output="barcode.png", max_uniform_ratio = 0.5, sample_rate=5):
+    """Extract average colors from video frames, returning colors and 4 most distinct."""
     cap = cv2.VideoCapture(video_path)
     # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 160)
     # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 90)
@@ -108,13 +110,12 @@ def video_to_color_barcode(video_path, output="barcode.png", max_uniform_ratio =
 
 
 def safe_filename(name):
-    # replace any invalid character with underscore
+    """Replace invalid filesystem characters with underscores."""
     return re.sub(r'[<>:"/\\|?*]', '_', name)
 
 
 def add_to_json(movie, avg_colors, overall_avg, four_opposites):
-    # prepare movie data
-
+    """Append movie color data to the JSON results file."""
     json_path = "results/movies_colors.json"
 
 

@@ -29,11 +29,13 @@ PUBLIC_DATA = ROOT / "public" / "data"
 
 
 def _ensure_paths() -> None:
+    """Create output directories if they don't exist."""
     PUBLIC_DATA.mkdir(parents=True, exist_ok=True)
     RAW_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _read_csv(name: str, **kwargs) -> pd.DataFrame:
+    """Read a CSV file from the raw data directory."""
     path = RAW_DIR / name
     if not path.exists():
         raise FileNotFoundError(f"Missing raw file: {path}")
@@ -41,6 +43,7 @@ def _read_csv(name: str, **kwargs) -> pd.DataFrame:
 
 
 def _read_tsv(name: str, usecols: Optional[List[str]] = None) -> pd.DataFrame:
+    """Read a TSV file from the raw data directory (supports .gz)."""
     primary = RAW_DIR / name
     fallback = RAW_DIR / name.replace(".tsv.gz", ".tsv")
     path = primary if primary.exists() else fallback
@@ -50,6 +53,7 @@ def _read_tsv(name: str, usecols: Optional[List[str]] = None) -> pd.DataFrame:
 
 
 def load_movies() -> pd.DataFrame:
+    """Load and clean Kaggle movies dataset with budget, revenue, and production info."""
     df = _read_csv("movies.csv")
     df.columns = [c.lower() for c in df.columns]
     if "release_year" not in df.columns and "release_date" in df.columns:
@@ -88,6 +92,7 @@ def load_movies() -> pd.DataFrame:
 
 
 def load_engagement() -> pd.DataFrame:
+    """Load Netflix engagement data with hours viewed and viewership metrics."""
     df = _read_csv("engagement.csv")
     df.columns = [c.lower() for c in df.columns]
     # Normalize naming differences. Some releases omit duration; fall back to hours only.
@@ -117,10 +122,12 @@ def load_engagement() -> pd.DataFrame:
 
 
 def _normalize_title(s: pd.Series) -> pd.Series:
+    """Normalize titles to lowercase and stripped for matching."""
     return s.fillna("").str.lower().str.strip()
 
 
 def load_imdb(candidate_titles: set[str]) -> pd.DataFrame:
+    """Load IMDB data (basics + ratings) in chunks, filtering to candidate titles."""
     basics_path = RAW_DIR / "title.basics.tsv.gz"
     if not basics_path.exists():
         basics_path = RAW_DIR / "title.basics.tsv"
@@ -179,6 +186,7 @@ def load_imdb(candidate_titles: set[str]) -> pd.DataFrame:
 
 
 def load_cast_ratings(valid_tconsts: Iterable[str]) -> pd.DataFrame:
+    """Load top 3 actors/actresses for each title from IMDB principals data."""
     valid = set(valid_tconsts)
     collected = []
     principals_path = RAW_DIR / "title.principals.tsv"
@@ -229,6 +237,7 @@ def load_cast_ratings(valid_tconsts: Iterable[str]) -> pd.DataFrame:
 
 
 def merge_data() -> pd.DataFrame:
+    """Merge Kaggle, Netflix, and IMDB data on imdb_id with title+year fallback."""
     movies = load_movies()
     engagement = load_engagement()
     candidate_titles = set(_normalize_title(movies["title"]).dropna().tolist()) | set(
@@ -277,6 +286,7 @@ def merge_data() -> pd.DataFrame:
 
 
 def _first_from_list(raw: object, key: str) -> Optional[str]:
+    """Extract first value of a key from a JSON-encoded list of dicts."""
     if raw is None or (isinstance(raw, float) and np.isnan(raw)):
         return None
     items = raw
@@ -361,6 +371,7 @@ COUNTRY_REGION_MAP = {
 
 
 def _to_region(country: Optional[str], country_code: Optional[str] = None) -> str:
+    """Map country name or code to a continent/region."""
     def _lookup(val: Optional[str]) -> Optional[str]:
         if not isinstance(val, str):
             return None
@@ -372,6 +383,7 @@ def _to_region(country: Optional[str], country_code: Optional[str] = None) -> st
 
 
 def _export_json(df: pd.DataFrame, path: Path, sample: bool = False) -> None:
+    """Export DataFrame to JSON file, converting NaN to null."""
     cleaned = df.replace([np.inf, -np.inf], np.nan)
     # Use pandas JSON export to coerce NaN -> null safely.
     records = json.loads(cleaned.to_json(orient="records"))
@@ -383,6 +395,7 @@ def _export_json(df: pd.DataFrame, path: Path, sample: bool = False) -> None:
 
 
 def main() -> None:
+    """Entry point: merge all data sources and export to JSON."""
     _ensure_paths()
     merged = merge_data()
     _export_json(merged, PUBLIC_DATA / "processed.json")
