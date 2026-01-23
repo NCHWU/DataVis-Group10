@@ -1,4 +1,4 @@
- <!doctype html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -56,35 +56,53 @@
       </div>
 
       <section class="card wide">
-        <h2>Deep Dive</h2>
-        <p class="subhead">Budget vs. rating scatter; brush to compare selections</p>
+
+        <div class="deepdive-header-row">
+    <h2>Deep Dive</h2>
+    <button id="selectAllBtn" class="ghost small-btn" type="button">Select All</button>
+
+          <button id="deepdive-clear" class="ghost" type="button">Clear picks</button>
+            <div class="color-picker-container">
+                <button id="color-search-btn" class="ghost" type="button">Filter by Color: </button>
+                <input type="color" id="color-wheel" value="#1c639e" title="Select a color to find matching movies" />
+            </div>
+            <input id="search-title" class="search-input" type="search" placeholder="Search for a specific title..." />
+            <ul id="search-suggestions"></ul>
+        </div>
+
+          <p class="subhead">Budget vs. rating scatter; brush to compare selections</p>
+
         <div class="deepdive-layout">
+
           <div id="scatter"></div>
+
           <div id="deepdive-panel" class="compare-panel">
-            <div class="compare-header">
-              <div class="deepdive-header">
-                <h4>Deep Dive Picks</h4>
-                <span class="muted">Click points in the scatter to add/remove selections, or manually add with the search bar.</span>
-              </div>
-              <button id="deepdive-clear" class="ghost" type="button">Clear picks</button>
-            </div>
-            <div class="search-block compact">
-              <div class="search-header">
-                <div>
-                  <h5>Search to add a pick</h5>
-                </div>
-                <input id="search-title" type="search" placeholder="Start typing a title..." />
-              </div>
-              <ul id="search-suggestions"></ul>
-            </div>
-            <div class="deepdive-panel-grid">
-              <div id="deepdive-grid" class="compare-grid"></div>
-              <div class="deepdive-charts">
-                <div id="deepdive-average"></div>
-                <div id="deepdive-combined"></div>
+ <div class="compare-header">
+                  <div class="deepdive-header">
+                    <h4>Deep Dive Picks</h4>
+                    <span class="muted">Click dots, ctrl drag, or use search to find movies.</span>
+
+                <div class="search-block compact">
+                  <div class="search-header color-search-row">
+
+
+
+                <div class="deepdive-panel-grid">
+              <div class="deepdive-list-container">
+                <div id="deepdive-grid" class="compare-grid"></div>
+                  <div id="deepdive-empty-message"></div>
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section class="card wide">
+        <h2>Comparative Analysis</h2>
+        <p class="subhead">Average vs. Multi-selection combined glyphs</p>
+        <div class="deepdive-charts-standalone">
+          <div id="deepdive-average" class="glyph-box"></div>
+          <div id="deepdive-combined" class="glyph-box"></div>
         </div>
       </section>
 

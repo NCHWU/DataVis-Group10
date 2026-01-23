@@ -32,6 +32,11 @@ const compareClearBtn = document.querySelector("#compare-clear");
 const deepDiveClearBtn = document.querySelector("#deepdive-clear");
 const matrixResetBtn = document.querySelector("#matrix-reset");
 const timelineResetBtn = document.querySelector("#timeline-reset");
+const colorPicker = document.querySelector("#color-wheel");
+const colorSearchBtn = document.querySelector("#color-search-btn");
+const selectAllBtn = document.querySelector("#selectAllBtn");
+
+// document.getElementById("selectAllBtn").addEventListener("click", selectAllDeepDive);
 
 // ============================================================================
 // DATA LOADING
@@ -902,6 +907,44 @@ function averageMovieColor(movie) {
   return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
 }
 
+// Converts hex color to RGB array
+function hexToRgb(hex) {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? [
+    parseInt(result[1], 16),
+    parseInt(result[2], 16),
+    parseInt(result[3], 16)
+  ] : null;
+}
+
+// Filters deep dive selection to movies closest to the given color
+function findMoviesByColor(hexColor) {
+  const targetRgb = hexToRgb(hexColor);
+  if (!targetRgb) return;
+
+  const maxDistance = 100;
+  const selectedIds = new Set(state.deepDive);
+  const candidates = state.data.filter(m => selectedIds.has(m.id) && state.barcodeColors[m.title]);
+
+  const matches = candidates.map(movie => {
+    const movieColor = state.barcodeColors[movie.title].overall_avg;
+    if (!movieColor) return null;
+    const dist = Math.sqrt(
+      Math.pow(movieColor[0] - targetRgb[0], 2) +
+      Math.pow(movieColor[1] - targetRgb[1], 2) +
+      Math.pow(movieColor[2] - targetRgb[2], 2)
+    );
+    return { id: movie.id, dist };
+  })
+    .filter(m => m && m.dist <= maxDistance)
+    .sort((a, b) => a.dist - b.dist)
+    .slice(0, 50);
+
+  state.deepDive = matches.map(m => m.id);
+  renderDeepDiveSelection();
+  renderScatter(state.filtered);
+}
+
 // Performs k-means clustering on colors to find k representative colors
 function kMeansColors(colors, k) {
   if (!colors.length) return [];
@@ -1563,20 +1606,37 @@ function renderDeepDiveSelection() {
       const container = document.querySelector("#deepdive-grid");
       const combined = document.querySelector("#deepdive-combined");
       const averageContainer = document.querySelector("#deepdive-average");
+      const comparativeSection = document.querySelector("#deepdive-combined").closest("section"); // parent section
 
       if (!container) return;
       container.innerHTML = "";
       if (combined) combined.innerHTML = "";
       if (averageContainer) averageContainer.innerHTML = "";
 
-      if (!state.deepDive.length) {
-        if (combined) {
-          combined.innerHTML = `<p class="muted">Select movies to compare the combined glyph.</p>`;
-        }
-        container.innerHTML = `<p class="muted">No movies selected yet. Click or drag-select dots to explore.</p>`;
-        return;
-      }
+      const oldMsg = comparativeSection.querySelector(".deepdive-placeholder-msg");
+  if (oldMsg) oldMsg.remove();
 
+
+  if (!state.deepDive.length) {
+    // Add message **after the header**
+    const msg = document.createElement("p");
+    msg.className = "muted deepdive-placeholder-msg";
+    msg.textContent = " - Select movies to compare the combined glyph.";
+
+  const header = comparativeSection.querySelector("h2");
+  if (header) {
+    // Wrap header and message in a flex container
+    const wrapper = document.createElement("div");
+    wrapper.className = "comparative-header-row";
+
+    header.replaceWith(wrapper); // remove original header
+    wrapper.appendChild(header);  // put header inside wrapper
+    wrapper.appendChild(msg);     // put message next to header
+  }
+
+  container.innerHTML = `<p class="muted">  (No movies selected yet. Click or drag-select dots to explore)</p>`;
+  return;
+}
       const picks = state.deepDive
         .map((id) => state.data.find((d) => String(d.id) === String(id)))
         .filter(Boolean)
@@ -1716,8 +1776,9 @@ function renderDeepDiveAverageGlyph(movies, containerSelector) {
     viewership: d3.mean(movies, d => d._metrics.viewership) || 0
   };
 
-  const width = 260;
-  const height = 180;
+
+  const width = 500;
+  const height = 500;
   const svg = container.append("svg")
     .attr("width", "100%")
     .attr("height", height)
@@ -1726,16 +1787,17 @@ function renderDeepDiveAverageGlyph(movies, containerSelector) {
 
   // Title
   svg.append("text")
+      .attr("class", "comparison-title")
     .attr("x", width / 2)
-    .attr("y", 14)
+    .attr("y", 30)
     .attr("text-anchor", "middle")
-    .attr("fill", "var(--muted)")
-    .attr("font-size", "11px")
+    .attr("fill", "white")
+    .attr("font-size", "30px")
     .text(`Average (${movies.length} selected)`);
 
-  const budgetMax = Math.max(400_000_000, d3.max(movies, d => d._metrics.budget) || 0);
-  const revenueMax = Math.max(1_000_000_000, d3.max(movies, d => d._metrics.revenue) || 0);
-  const viewershipMax = Math.max(100_000_000, d3.max(movies, d => d._metrics.viewership) || 0);
+  const budgetMax =  1.1 * d3.max(movies, d => d._metrics.budget);
+  const revenueMax = 1.1 * d3.max(movies, d => d._metrics.revenue);
+  const viewershipMax =  1.1 * d3.max(movies, d => d._metrics.viewership);
 
   const metrics = [
     { label: "Rating", value: avgMetrics.rating, max: 10 },
@@ -1744,9 +1806,10 @@ function renderDeepDiveAverageGlyph(movies, containerSelector) {
     { label: "Viewers", value: avgMetrics.viewership, max: viewershipMax }
   ];
 
+
   const centerX = width / 2;
   const centerY = height / 2 + 10;
-  const radius = 55;
+  const radius = 160;
   const angleStep = (Math.PI * 2) / metrics.length;
 
   // Background circles
@@ -1759,6 +1822,59 @@ function renderDeepDiveAverageGlyph(movies, containerSelector) {
       .attr("stroke", "rgba(255,255,255,0.06)");
   }
 
+
+        const tickCount = 4;
+        const tickSize = 4; // length of tick mark
+        function formatMetricValue(label, value) {
+          switch (label) {
+            case "Rating":
+              return value.toFixed(1);
+            case "Budget":
+            case "Revenue":
+              return `$${(value / 1_000_000).toFixed(0)}M`;
+            case "Viewers":
+              return `${(value / 1_000_000).toFixed(0)}M`;
+            default:
+              return value;
+          }
+          }
+metrics.forEach((m, i) => {
+  const angle = -Math.PI / 2 + i * angleStep;
+
+  for (let t = 1; t <= tickCount; t++) {
+    const r = (radius / tickCount) * t;
+
+    // position on axis
+    const x = centerX + Math.cos(angle) * r;
+    const y = centerY + Math.sin(angle) * r;
+
+    // perpendicular direction
+    const perpAngle = angle + Math.PI / 2;
+
+    svg.append("line")
+      .attr("x1", x - Math.cos(perpAngle) * tickSize)
+      .attr("y1", y - Math.sin(perpAngle) * tickSize)
+      .attr("x2", x + Math.cos(perpAngle) * tickSize)
+      .attr("y2", y + Math.sin(perpAngle) * tickSize)
+      .attr("stroke", "rgba(255,255,255,0.25)")
+      .attr("stroke-width", 1);
+     // VALUE LABEL ONLY AT LAST TICK
+    if (t === tickCount) {
+        const value =(m.max / tickCount) * t; // outer ring represents max
+
+        svg.append("text")
+            .attr("x", centerX + Math.cos(angle) * (r + 12))
+            .attr("y", centerY + Math.sin(angle) * (r + 12))
+            .attr("text-anchor", "middle")
+            .attr("dominant-baseline", "middle")
+            .attr("fill", "var(--muted)")
+            .attr("font-size", "25px")
+            .text(formatMetricValue(m.label, value));
+    }
+  }
+});
+
+    // add metric labels and horizontal/ vertical lines
   metrics.forEach((m, i) => {
     const angle = -Math.PI / 2 + i * angleStep;
     const x = centerX + Math.cos(angle) * radius;
@@ -1771,21 +1887,50 @@ function renderDeepDiveAverageGlyph(movies, containerSelector) {
       .attr("y2", y)
       .attr("stroke", "rgba(255,255,255,0.1)");
 
-    const labelRadius = radius + 18;
+    function labelOffset(label) {
+      switch (label) {
+        case "Revenue":
+          return 20;   // move inward / lower
+        case "Rating":
+            return -20
+        case "Viewers":
+          case "Budget":
+          return -25;    // move outward / higher
+        default:
+          return 0;
+      }
+    }
+const y_offset = labelOffset(m.label);
+const labelRadius = radius + 18;
     svg.append("text")
       .attr("x", centerX + Math.cos(angle) * labelRadius)
-      .attr("y", centerY + Math.sin(angle) * labelRadius)
+      .attr("y", centerY + y_offset + Math.sin(angle) * labelRadius)
       .attr("text-anchor", "middle")
       .attr("dominant-baseline", "middle")
       .attr("fill", "#4ee1a0")
-      .attr("font-size", "10px")
+      .attr("font-size", "20px")
       .text(m.label);
   });
 
   const radial = d3.lineRadial()
-    .angle((_, i) => -Math.PI / 2 + i * angleStep)
-    .radius((m) => radius * Math.max(0.05, Math.min(m.value / m.max, 1)))
-    .curve(d3.curveLinearClosed);
+  .angle((_, i) => -Math.PI / 2 + (i+1) * angleStep)
+  .radius((m, i) => {
+    const ratio = m.value / m.max;
+    const clamped = Math.max(0.05, Math.min(ratio, 1));
+    const pixelRadius = radius * clamped;
+
+    console.log(
+      m.label,
+      "value:", m.value,
+      "max:", m.max,
+      "ratio:", ratio.toFixed(3),
+      "clamped:", clamped.toFixed(3),
+      "pixel radius:", pixelRadius.toFixed(2)
+    );
+
+    return pixelRadius;
+  })
+  .curve(d3.curveLinearClosed);
 
   svg.append("path")
     .datum(metrics)
@@ -1812,8 +1957,8 @@ function renderDeepDiveCombinedGlyph(movies, highlightId = null) {
   const colors = d3.schemeTableau10;
   const colorFor = (idx) => colors[idx % colors.length];
 
-  const width = 260;
-  const height = 180;
+  const width = 500;
+  const height = 500;
   const svg = d3.select(container).append("svg")
     .attr("width", "100%")
     .attr("height", height)
@@ -1822,12 +1967,14 @@ function renderDeepDiveCombinedGlyph(movies, highlightId = null) {
 
   // Title
   svg.append("text")
+      .attr("class", "comparison-title")
     .attr("x", width / 2)
-    .attr("y", 14)
+    .attr("y", 30)
     .attr("text-anchor", "middle")
-    .attr("fill", "var(--muted)")
-    .attr("font-size", "11px")
-    .text("Comparison");
+    .attr("fill", "#ffffff")
+    .attr("color", "white")
+    .attr("font-size", "30px")
+    .text("All Movies");
 
   const metricMax = (key, fallback, scale = 1.1) => {
     const vals = movies
@@ -1850,7 +1997,7 @@ function renderDeepDiveCombinedGlyph(movies, highlightId = null) {
 
   const centerX = width / 2;
   const centerY = height / 2 + 10;
-  const radius = 55;
+  const radius = 160;
   const angleStep = (Math.PI * 2) / metrics.length;
 
   // Background circles
@@ -1862,6 +2009,60 @@ function renderDeepDiveCombinedGlyph(movies, highlightId = null) {
       .attr("fill", "none")
       .attr("stroke", "rgba(255,255,255,0.06)");
   }
+
+
+   const tickCount = 4;
+        const tickSize = 4; // length of tick mark
+        function formatMetricValue(label, value) {
+          switch (label) {
+            case "Rating":
+              return value.toFixed(1);
+            case "Budget":
+            case "Revenue":
+              return `$${(value / 1_000_000).toFixed(0)}M`;
+            case "Viewers":
+              return `${(value / 1_000_000).toFixed(0)}M`;
+            default:
+              return value;
+          }
+          }
+    metrics.forEach((m, i) => {
+      const angle = -Math.PI / 2 + i * angleStep;
+
+      for (let t = 1; t <= tickCount; t++) {
+        const r = (radius / tickCount) * t;
+
+        // position on axis
+        const x = centerX + Math.cos(angle) * r;
+        const y = centerY + Math.sin(angle) * r;
+
+        // perpendicular direction
+        const perpAngle = angle + Math.PI / 2;
+
+        svg.append("line")
+          .attr("x1", x - Math.cos(perpAngle) * tickSize)
+          .attr("y1", y - Math.sin(perpAngle) * tickSize)
+          .attr("x2", x + Math.cos(perpAngle) * tickSize)
+          .attr("y2", y + Math.sin(perpAngle) * tickSize)
+          .attr("stroke", "rgba(255,255,255,0.25)")
+          .attr("stroke-width", 1);
+         // VALUE LABEL ONLY AT LAST TICK
+        if (t === tickCount) {
+            const value =(m.max / tickCount) * t; // outer ring represents max
+
+            svg.append("text")
+                .attr("x", centerX + Math.cos(angle) * (r + 12))
+                .attr("y", centerY + Math.sin(angle) * (r + 12))
+                .attr("text-anchor", "middle")
+                .attr("dominant-baseline", "middle")
+                .attr("fill", "var(--muted)")
+                .attr("font-size", "25px")
+                .text(formatMetricValue(m.label, value));
+        }
+      }
+    });
+
+
 
   // Axes and labels
   metrics.forEach((m, i) => {
@@ -1876,14 +2077,29 @@ function renderDeepDiveCombinedGlyph(movies, highlightId = null) {
       .attr("y2", y)
       .attr("stroke", "rgba(255,255,255,0.1)");
 
+        function labelOffset(label) {
+      switch (label) {
+        case "Revenue":
+          return 20;   // move inward / lower
+        case "Rating":
+            return -20
+        case "Viewers":
+          case "Budget":
+          return -25;    // move outward / higher
+        default:
+          return 0;
+      }
+    }
+const y_offset = labelOffset(m.label);
+
     const labelRadius = radius + 18;
     svg.append("text")
       .attr("x", centerX + Math.cos(angle) * labelRadius)
-      .attr("y", centerY + Math.sin(angle) * labelRadius)
+      .attr("y", centerY + y_offset + Math.sin(angle) * labelRadius)
       .attr("text-anchor", "middle")
       .attr("dominant-baseline", "middle")
       .attr("fill", "#b7c7e6")
-      .attr("font-size", "10px")
+      .attr("font-size", "20px")
       .text(m.label);
   });
 
@@ -1929,7 +2145,7 @@ function renderDeepDiveCombinedGlyph(movies, highlightId = null) {
   // Description (before legend)
   const desc = document.createElement("p");
   desc.className = "muted";
-  desc.style.fontSize = "10px";
+  desc.style.fontSize = "20px";
   desc.style.margin = "0.5rem 0 0.3rem 0";
   desc.textContent = "Click titles to show/hide";
   container.appendChild(desc);
@@ -2142,6 +2358,13 @@ async function init() {
     if (regionFilter) regionFilter.addEventListener("change", applyFilters);
     if (genreFilter) genreFilter.addEventListener("change", applyFilters);
     searchInput.addEventListener("input", (e) => renderSearchResult(e.target.value));
+
+    if (colorSearchBtn && colorPicker) {
+      colorSearchBtn.addEventListener("click", () => {
+        findMoviesByColor(colorPicker.value);
+      });
+    }
+
     console.log("[init] buttons present", {
       compareAdd: !!compareAddBtn,
       compareClear: !!compareClearBtn,
@@ -2209,6 +2432,30 @@ async function init() {
         applyFilters();
       });
     }
+if (selectAllBtn) {
+  selectAllBtn.addEventListener("click", () => {
+    const svg = d3.select("#scatter svg");
+    if (svg.empty()) return;
+
+    // 1️⃣ Grab the currently plotted circles (the same as brush does)
+    const circles = svg.selectAll("circle").data();
+
+    // 2️⃣ Update state.deepDive only for visible points
+    state.deepDive = circles.map(d => d.id);
+    state.deepDiveHighlights = new Set(state.deepDive.map(String));
+
+    // 3️⃣ Update the deep dive grid panel (titles)
+    renderDeepDiveSelection();
+
+    // 4️⃣ Update only the strokes of visible circles (no re-render of scatter)
+    svg.selectAll("circle")
+      .attr("stroke", d => state.deepDiveHighlights.has(String(d.id))
+        ? "rgba(255, 255, 255, 0.8)"
+        : "rgba(255,255,255,0.15)")
+      .attr("stroke-width", d => state.deepDiveHighlights.has(String(d.id)) ? 2 : 0.5);
+  });
+}
+
     if (resetBtn) {
       resetBtn.addEventListener("click", () => {
         if (regionFilter) regionFilter.value = "";
